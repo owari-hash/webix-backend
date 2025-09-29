@@ -4,7 +4,7 @@ const port = 3000;
 
 // Simple route
 app.get('/', (req, res) => {
-  res.send('Hello from Express.js!');
+  res.send('GAAAAAAAAY!');
 });
 
 // Start server
