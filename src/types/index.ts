@@ -1,5 +1,5 @@
 export interface User {
-  _id: string;
+  _id?: string;
   email: string;
   passwordHash: string;
   displayName: string;
@@ -14,7 +14,7 @@ export interface User {
 }
 
 export interface Organization {
-  _id: string;
+  _id?: string;
   name: string;
   subdomain: string;
   domain?: string;
@@ -41,7 +41,7 @@ export interface Organization {
 }
 
 export interface UserOrganization {
-  _id: string;
+  _id?: string;
   userId: string;
   organizationId: string;
   role: "admin" | "moderator" | "user" | "viewer";
@@ -51,7 +51,7 @@ export interface UserOrganization {
 }
 
 export interface Session {
-  _id: string;
+  _id?: string;
   userId: string;
   token: string;
   refreshToken: string;
@@ -62,7 +62,7 @@ export interface Session {
 }
 
 export interface Webtoon {
-  _id: string;
+  _id?: string;
   organizationId: string;
   title: string;
   description?: string;
@@ -77,7 +77,7 @@ export interface Webtoon {
 }
 
 export interface WebtoonEpisode {
-  _id: string;
+  _id?: string;
   webtoonId: string;
   title: string;
   episodeNumber: number;
@@ -90,7 +90,7 @@ export interface WebtoonEpisode {
 }
 
 export interface Analytics {
-  _id: string;
+  _id?: string;
   organizationId?: string;
   userId?: string;
   webtoonId?: string;
@@ -110,7 +110,7 @@ export interface Analytics {
 }
 
 export interface Invoice {
-  _id: string;
+  _id?: string;
   organizationId: string;
   invoiceNumber: string;
   amount: number;
@@ -131,7 +131,7 @@ export interface InvoiceItem {
 }
 
 export interface Payment {
-  _id: string;
+  _id?: string;
   invoiceId: string;
   amount: number;
   currency: string;
@@ -143,7 +143,7 @@ export interface Payment {
 }
 
 export interface Notification {
-  _id: string;
+  _id?: string;
   userId: string;
   organizationId?: string;
   title: string;
@@ -155,7 +155,7 @@ export interface Notification {
 }
 
 export interface Message {
-  _id: string;
+  _id?: string;
   senderId: string;
   receiverId: string;
   organizationId?: string;
@@ -166,7 +166,7 @@ export interface Message {
 }
 
 export interface AuditLog {
-  _id: string;
+  _id?: string;
   userId?: string;
   organizationId?: string;
   action: string;
