@@ -50,8 +50,10 @@ app.use(
         process.env.CLIENT_URL || "http://localhost:3000",
         "http://localhost:3000",
         "http://localhost:3001",
+        "http://localhost:8003", // Your frontend port
         "http://127.0.0.1:3000",
         "http://127.0.0.1:3001",
+        "http://127.0.0.1:8003", // Your frontend port
       ];
 
       if (allowedOrigins.includes(origin)) {
@@ -77,7 +79,22 @@ app.use(
 
 // Handle preflight requests
 app.options("*", (req, res) => {
-  res.header("Access-Control-Allow-Origin", req.headers.origin || "*");
+  const origin = req.headers.origin;
+  const allowedOrigins = [
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "http://localhost:8003",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:3001",
+    "http://127.0.0.1:8003",
+  ];
+
+  if (origin && allowedOrigins.includes(origin)) {
+    res.header("Access-Control-Allow-Origin", origin);
+  } else {
+    res.header("Access-Control-Allow-Origin", "*");
+  }
+
   res.header(
     "Access-Control-Allow-Methods",
     "GET, POST, PUT, DELETE, PATCH, OPTIONS"
