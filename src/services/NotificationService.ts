@@ -2,85 +2,124 @@ import { Notification } from "../models/Notification";
 import { User } from "../models/User";
 import { AuditLog } from "../models/AuditLog";
 import { CreateNotificationDto, PaginatedResponse } from "../types";
-import { io } from "../index";
+import mongoose from "mongoose";
 
 export class NotificationService {
   async createNotification(
+    organizationId: string,
     notificationData: CreateNotificationDto
   ): Promise<any> {
-    const notification = await Notification.createNotification(
-      notificationData
-    );
+    const notification = new Notification({
+      ...notificationData,
+      organizationId: new mongoose.Types.ObjectId(organizationId),
+      userId: notificationData.userId
+        ? new mongoose.Types.ObjectId(notificationData.userId)
+        : undefined,
+      isRead: false,
+    });
+
+    await notification.save();
 
     // Emit real-time notification
-    io.to(`user:${notificationData.userId}`).emit(
-      "notification:new",
-      notification
-    );
 
     // Log notification creation
-    await AuditLog.logAction({
-      userId: notificationData.userId,
-      organizationId: notificationData.organizationId,
+    const auditLog = new AuditLog({
+      organizationId: new mongoose.Types.ObjectId(organizationId),
+      userId: notificationData.userId
+        ? new mongoose.Types.ObjectId(notificationData.userId)
+        : undefined,
       action: "notification_created",
       resource: "notification",
       resourceId: notification._id,
     });
+    await auditLog.save();
 
     return notification;
   }
 
-  async getUserNotifications(
-    userId: string,
+  async getNotifications(
+    organizationId: string,
+    userId?: string,
     page = 1,
-    limit = 20,
-    unreadOnly = false
+    limit = 20
   ): Promise<PaginatedResponse<any>> {
-    const result = await Notification.getUserNotifications(
-      userId,
-      page,
-      limit,
-      unreadOnly
-    );
+    const query: any = {
+      organizationId: new mongoose.Types.ObjectId(organizationId),
+    };
+
+    if (userId) {
+      query.$or = [
+        { userId: new mongoose.Types.ObjectId(userId) },
+        { userId: { $exists: false } },
+      ];
+    }
+
+    const skip = (page - 1) * limit;
+
+    const [notifications, total] = await Promise.all([
+      Notification.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit),
+      Notification.countDocuments(query),
+    ]);
 
     return {
-      data: result.notifications,
-      pagination: result.pagination,
+      data: notifications,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit),
+      },
     };
   }
 
   async markAsRead(notificationId: string, userId: string): Promise<any> {
-    const notification = await Notification.markAsRead(notificationId, userId);
+    const notification = await Notification.findOne({
+      _id: new mongoose.Types.ObjectId(notificationId),
+      $or: [
+        { userId: new mongoose.Types.ObjectId(userId) },
+        { userId: { $exists: false } },
+      ],
+    });
 
     if (!notification) {
       throw new Error("Notification not found");
     }
 
+    notification.isRead = true;
+    await notification.save();
+
     // Log notification read
-    await AuditLog.logAction({
-      userId,
+    const auditLog = new AuditLog({
+      userId: new mongoose.Types.ObjectId(userId),
       action: "notification_read",
       resource: "notification",
-      resourceId: notificationId,
+      resourceId: new mongoose.Types.ObjectId(notificationId),
     });
+    await auditLog.save();
 
     return notification;
   }
 
   async markAllAsRead(userId: string): Promise<void> {
-    await Notification.markAllAsRead(userId);
+    await Notification.updateMany(
+      {
+        $or: [
+          { userId: new mongoose.Types.ObjectId(userId) },
+          { userId: { $exists: false } },
+        ],
+        isRead: false,
+      },
+      { isRead: true }
+    );
 
     // Log all notifications read
-    await AuditLog.logAction({
-      userId,
+    const auditLog = new AuditLog({
+      userId: new mongoose.Types.ObjectId(userId),
       action: "all_notifications_read",
       resource: "notification",
       resourceId: "all",
     });
-  }
-
-  async getUnreadCount(userId: string): Promise<number> {
-    return Notification.getUnreadCount(userId);
+    await auditLog.save();
   }
 
   async deleteNotification(
@@ -88,32 +127,40 @@ export class NotificationService {
     userId: string
   ): Promise<void> {
     const notification = await Notification.findOne({
-      _id: notificationId,
-      userId,
+      _id: new mongoose.Types.ObjectId(notificationId),
+      $or: [
+        { userId: new mongoose.Types.ObjectId(userId) },
+        { userId: { $exists: false } },
+      ],
     });
+
     if (!notification) {
       throw new Error("Notification not found");
     }
 
-    await Notification.findByIdAndDelete(notificationId);
+    await Notification.findByIdAndDelete(
+      new mongoose.Types.ObjectId(notificationId)
+    );
 
     // Log notification deletion
-    await AuditLog.logAction({
-      userId,
+    const auditLog = new AuditLog({
+      userId: new mongoose.Types.ObjectId(userId),
       action: "notification_deleted",
       resource: "notification",
-      resourceId: notificationId,
+      resourceId: new mongoose.Types.ObjectId(notificationId),
     });
+    await auditLog.save();
   }
 
-  async sendBulkNotification(
+  async sendToMultipleUsers(
+    organizationId: string,
     userIds: string[],
     notificationData: Omit<CreateNotificationDto, "userId">
   ): Promise<any[]> {
     const notifications = [];
 
     for (const userId of userIds) {
-      const notification = await this.createNotification({
+      const notification = await this.createNotification(organizationId, {
         ...notificationData,
         userId,
       });
@@ -123,39 +170,46 @@ export class NotificationService {
     return notifications;
   }
 
-  async sendOrganizationNotification(
+  async sendToOrganization(
     organizationId: string,
-    notificationData: Omit<CreateNotificationDto, "userId" | "organizationId">
-  ): Promise<any[]> {
+    notificationData: Omit<CreateNotificationDto, "userId">
+  ): Promise<any> {
     // Get all users in the organization
     const { UserOrganization } = await import("../models/UserOrganization");
     const userOrgs = await UserOrganization.find({
-      organizationId,
+      organizationId: new mongoose.Types.ObjectId(organizationId),
       isActive: true,
     });
     const userIds = userOrgs.map((org) => org.userId.toString());
 
-    return this.sendBulkNotification(userIds, {
+    return this.sendToMultipleUsers(organizationId, userIds, {
       ...notificationData,
       organizationId,
     });
   }
 
   async cleanupOldNotifications(daysOld = 30): Promise<number> {
-    const result = await Notification.deleteOldNotifications(daysOld);
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - daysOld);
+
+    const result = await Notification.deleteMany({
+      createdAt: { $lt: cutoffDate },
+    });
+
     return result.deletedCount || 0;
   }
 
-  async getNotificationStats(userId: string): Promise<any> {
-    const total = await Notification.countDocuments({ userId });
-    const unread = await Notification.getUnreadCount(userId);
-    const read = total - unread;
-
-    return {
-      total,
-      read,
-      unread,
-      readPercentage: total > 0 ? Math.round((read / total) * 100) : 0,
-    };
+  async getUnreadCount(
+    userId: string,
+    organizationId: string
+  ): Promise<number> {
+    return Notification.countDocuments({
+      organizationId: new mongoose.Types.ObjectId(organizationId),
+      $or: [
+        { userId: new mongoose.Types.ObjectId(userId) },
+        { userId: { $exists: false } },
+      ],
+      isRead: false,
+    });
   }
 }

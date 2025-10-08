@@ -148,7 +148,6 @@ router.post(
       req.params.organizationId,
       userEmail,
       role,
-      permissions,
       req.user!.userId
     );
 
@@ -215,7 +214,6 @@ router.put(
       req.params.organizationId,
       req.params.userId,
       role,
-      permissions,
       req.user!.userId
     );
 

@@ -1,9 +1,18 @@
 import mongoose, { Schema, Document } from "mongoose";
-import { AuditLog as IAuditLog } from "../types";
 
 mongoose.pluralize(null);
 
-export interface AuditLogDocument extends IAuditLog, Document {}
+export interface AuditLogDocument extends Document {
+  userId?: mongoose.Types.ObjectId;
+  organizationId?: mongoose.Types.ObjectId;
+  action: string;
+  resource: string;
+  resourceId: string;
+  metadata?: any;
+  ipAddress?: string;
+  userAgent?: string;
+  timestamp: Date;
+}
 
 const AuditLogSchema = new Schema<AuditLogDocument>(
   {
@@ -136,7 +145,7 @@ AuditLogSchema.statics.getAuditStats = async function (
   startDate: Date,
   endDate: Date
 ) {
-  const pipeline = [
+  const pipeline: any[] = [
     {
       $match: {
         organizationId: new mongoose.Types.ObjectId(organizationId),

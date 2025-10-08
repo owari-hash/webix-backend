@@ -4,7 +4,13 @@ import { User } from "../models/User";
 import { Session } from "../models/Session";
 import { UserOrganization } from "../models/UserOrganization";
 import { AuditLog } from "../models/AuditLog";
-import { RegisterDto, LoginDto, AuthResponse, TokenPair } from "../types";
+import {
+  RegisterDto,
+  LoginDto,
+  AuthResponse,
+  TokenPair,
+  UserResponse,
+} from "../types";
 
 export class AuthService {
   async register(
@@ -30,10 +36,18 @@ export class AuthService {
     const tokens = user.generateTokens();
 
     // Create session
-    await Session.createSession(user._id, tokens, ipAddress, userAgent);
+    const session = new Session({
+      userId: user._id,
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+      ipAddress,
+      userAgent,
+      expiresAt: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000), // 15 days
+    });
+    await session.save();
 
     // Log registration
-    await AuditLog.logAction({
+    const auditLog = new AuditLog({
       userId: user._id,
       action: "user_registered",
       resource: "user",
@@ -41,9 +55,24 @@ export class AuthService {
       ipAddress,
       userAgent,
     });
+    await auditLog.save();
+
+    const userResponse: UserResponse = {
+      _id: user._id.toString(),
+      email: user.email,
+      displayName: user.displayName,
+      photoURL: user.photoURL,
+      role: user.role,
+      isActive: user.isActive,
+      twoFactorEnabled: user.twoFactorEnabled,
+      twoFactorSecret: user.twoFactorSecret,
+      lastLoginAt: user.lastLoginAt,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+    };
 
     return {
-      user: user.toJSON(),
+      user: userResponse,
       ...tokens,
     };
   }
@@ -53,11 +82,11 @@ export class AuthService {
     ipAddress?: string,
     userAgent?: string
   ): Promise<AuthResponse> {
-    // Find user with password hash
+    // Find user
     const user = await User.findOne({ email: loginData.email }).select(
       "+passwordHash"
     );
-    if (!user || !user.isActive) {
+    if (!user) {
       throw new Error("Invalid credentials");
     }
 
@@ -65,7 +94,7 @@ export class AuthService {
     const isPasswordValid = await user.comparePassword(loginData.password);
     if (!isPasswordValid) {
       // Log failed login attempt
-      await AuditLog.logAction({
+      const auditLog = new AuditLog({
         userId: user._id,
         action: "login_failed",
         resource: "user",
@@ -74,6 +103,7 @@ export class AuthService {
         ipAddress,
         userAgent,
       });
+      await auditLog.save();
       throw new Error("Invalid credentials");
     }
 
@@ -85,10 +115,18 @@ export class AuthService {
     const tokens = user.generateTokens();
 
     // Create session
-    await Session.createSession(user._id, tokens, ipAddress, userAgent);
+    const session = new Session({
+      userId: user._id,
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+      ipAddress,
+      userAgent,
+      expiresAt: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000), // 15 days
+    });
+    await session.save();
 
     // Log successful login
-    await AuditLog.logAction({
+    const auditLog = new AuditLog({
       userId: user._id,
       action: "login_success",
       resource: "user",
@@ -96,9 +134,24 @@ export class AuthService {
       ipAddress,
       userAgent,
     });
+    await auditLog.save();
+
+    const userResponse: UserResponse = {
+      _id: user._id.toString(),
+      email: user.email,
+      displayName: user.displayName,
+      photoURL: user.photoURL,
+      role: user.role,
+      isActive: user.isActive,
+      twoFactorEnabled: user.twoFactorEnabled,
+      twoFactorSecret: user.twoFactorSecret,
+      lastLoginAt: user.lastLoginAt,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+    };
 
     return {
-      user: user.toJSON(),
+      user: userResponse,
       ...tokens,
     };
   }
@@ -116,27 +169,26 @@ export class AuthService {
       ) as any;
 
       // Find valid session
-      const session = await Session.findValidSession(refreshToken);
+      const session = await Session.findOne({
+        refreshToken,
+        expiresAt: { $gt: new Date() },
+        isActive: true,
+      });
       if (!session) {
         throw new Error("Invalid refresh token");
       }
 
       // Check if user is still active
-      if (!session.userId.isActive) {
+      const user = await User.findById(session.userId);
+      if (!user || !user.isActive) {
         throw new Error("User account is inactive");
-      }
-
-      // Generate new tokens
-      const user = await User.findById(session.userId._id);
-      if (!user) {
-        throw new Error("User not found");
       }
 
       const tokens = user.generateTokens();
 
       // Update session with new tokens
-      session.token = tokens.accessToken;
-      session.refreshToken = tokens.refreshToken;
+      session.set("accessToken", tokens.accessToken);
+      session.set("refreshToken", tokens.refreshToken);
       session.expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
       await session.save();
 
@@ -147,11 +199,17 @@ export class AuthService {
   }
 
   async logout(accessToken: string): Promise<void> {
-    await Session.revokeSession(accessToken);
+    await Session.updateOne(
+      { accessToken },
+      { isActive: false, revokedAt: new Date() }
+    );
   }
 
   async logoutAll(userId: string): Promise<void> {
-    await Session.revokeAllUserSessions(userId);
+    await Session.updateMany(
+      { userId },
+      { isActive: false, revokedAt: new Date() }
+    );
   }
 
   async verifyToken(token: string): Promise<any> {
@@ -159,16 +217,25 @@ export class AuthService {
       const decoded = jwt.verify(token, process.env.JWT_SECRET!) as any;
 
       // Find valid session
-      const session = await Session.findValidSession(token);
+      const session = await Session.findOne({
+        accessToken: token,
+        expiresAt: { $gt: new Date() },
+        isActive: true,
+      });
       if (!session) {
         throw new Error("Invalid token");
       }
 
+      // Get user details
+      const user = await User.findById(session.userId);
+      if (!user) {
+        throw new Error("User not found");
+      }
+
       return {
-        userId: session.userId._id,
-        email: session.userId.email,
-        role: session.userId.role,
-        isActive: session.userId.isActive,
+        userId: user._id,
+        email: user.email,
+        role: user.role,
       };
     } catch (error) {
       throw new Error("Invalid token");
@@ -196,22 +263,27 @@ export class AuthService {
     await user.save();
 
     // Revoke all sessions except current one
-    await Session.revokeAllUserSessions(userId);
+    await Session.updateMany(
+      { userId },
+      { isActive: false, revokedAt: new Date() }
+    );
 
     // Log password change
-    await AuditLog.logAction({
+    const auditLog = new AuditLog({
       userId,
       action: "password_changed",
       resource: "user",
       resourceId: userId,
     });
+    await auditLog.save();
   }
 
   async getUserOrganizations(userId: string) {
-    return UserOrganization.getUserOrganizations(userId);
+    return UserOrganization.find({ userId }).populate("organizationId");
   }
 
   async checkOrganizationAccess(userId: string, organizationId: string) {
-    return UserOrganization.checkUserAccess(userId, organizationId);
+    const userOrg = await UserOrganization.findOne({ userId, organizationId });
+    return !!userOrg;
   }
 }

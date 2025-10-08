@@ -1,9 +1,22 @@
 import mongoose, { Schema, Document } from "mongoose";
-import { Webtoon as IWebtoon } from "../types";
 
 mongoose.pluralize(null);
 
-export interface WebtoonDocument extends IWebtoon, Document {}
+export interface WebtoonDocument extends Document {
+  organizationId: mongoose.Types.ObjectId;
+  createdBy: mongoose.Types.ObjectId;
+  title: string;
+  description: string;
+  genre: string[];
+  status: "draft" | "published" | "archived";
+  coverImage?: string;
+  tags: string[];
+  publishedAt?: Date;
+  viewCount: number;
+  likeCount: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
 
 const WebtoonSchema = new Schema<WebtoonDocument>(
   {
@@ -33,12 +46,6 @@ const WebtoonSchema = new Schema<WebtoonDocument>(
       default: "draft",
       index: true,
     },
-    categories: [
-      {
-        type: String,
-        trim: true,
-      },
-    ],
     tags: [
       {
         type: String,

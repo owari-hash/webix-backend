@@ -1,9 +1,32 @@
 import mongoose, { Schema, Document } from "mongoose";
-import { Organization as IOrganization } from "../types";
 
 mongoose.pluralize(null);
 
-export interface OrganizationDocument extends IOrganization, Document {}
+export interface OrganizationDocument extends Document {
+  name: string;
+  subdomain: string;
+  domain?: string;
+  status: "active" | "inactive" | "suspended" | "pending";
+  settings: {
+    theme: string;
+    language: string;
+    timezone: string;
+    features: {
+      webtoons: boolean;
+      analytics: boolean;
+      payments: boolean;
+      notifications: boolean;
+    };
+  };
+  subscription: {
+    plan: "free" | "basic" | "professional" | "enterprise";
+    startDate?: Date;
+    endDate?: Date;
+    isActive: boolean;
+  };
+  createdAt: Date;
+  updatedAt: Date;
+}
 
 const OrganizationSchema = new Schema<OrganizationDocument>(
   {

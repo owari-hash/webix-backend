@@ -50,7 +50,6 @@ router.get(
       req.params.organizationId,
       Number(page),
       Number(limit),
-      status as string,
       search as string
     );
 
@@ -69,14 +68,12 @@ router.get(
   permissionMiddleware(["content:read"]),
   asyncHandler(async (req, res) => {
     const webtoon = await webtoonService.getWebtoonById(
-      req.params.webtoonId,
-      req.params.organizationId
+      req.params.webtoonId
     );
 
     // Track view
     await webtoonService.viewWebtoon(
       req.params.webtoonId,
-      req.params.organizationId,
       req.user!.userId
     );
 
@@ -98,7 +95,6 @@ router.put(
     const webtoon = await webtoonService.updateWebtoon(
       req.params.webtoonId,
       req.body,
-      req.params.organizationId,
       req.user!.userId
     );
 
@@ -119,7 +115,6 @@ router.delete(
   asyncHandler(async (req, res) => {
     await webtoonService.deleteWebtoon(
       req.params.webtoonId,
-      req.params.organizationId,
       req.user!.userId
     );
 
@@ -139,7 +134,6 @@ router.post(
   asyncHandler(async (req, res) => {
     const webtoon = await webtoonService.publishWebtoon(
       req.params.webtoonId,
-      req.params.organizationId,
       req.user!.userId
     );
 
@@ -160,9 +154,8 @@ router.post(
   validateRequest(createEpisodeSchema),
   asyncHandler(async (req, res) => {
     const episode = await webtoonService.createEpisode(
-      req.body,
       req.params.webtoonId,
-      req.params.organizationId,
+      req.body,
       req.user!.userId
     );
 
@@ -185,10 +178,8 @@ router.get(
 
     const result = await webtoonService.getEpisodes(
       req.params.webtoonId,
-      req.params.organizationId,
       Number(page),
-      Number(limit),
-      status as string
+      Number(limit)
     );
 
     res.json({
@@ -206,9 +197,7 @@ router.get(
   permissionMiddleware(["content:read"]),
   asyncHandler(async (req, res) => {
     const episode = await webtoonService.getEpisodeById(
-      req.params.episodeId,
-      req.params.webtoonId,
-      req.params.organizationId
+      req.params.episodeId
     );
 
     res.json({
@@ -229,8 +218,6 @@ router.put(
     const episode = await webtoonService.updateEpisode(
       req.params.episodeId,
       req.body,
-      req.params.webtoonId,
-      req.params.organizationId,
       req.user!.userId
     );
 
@@ -251,8 +238,6 @@ router.delete(
   asyncHandler(async (req, res) => {
     await webtoonService.deleteEpisode(
       req.params.episodeId,
-      req.params.webtoonId,
-      req.params.organizationId,
       req.user!.userId
     );
 
@@ -270,17 +255,16 @@ router.post(
   organizationAccessMiddleware,
   permissionMiddleware(["content:write"]),
   asyncHandler(async (req, res) => {
-    const episode = await webtoonService.publishEpisode(
-      req.params.episodeId,
-      req.params.webtoonId,
-      req.params.organizationId,
-      req.user!.userId
-    );
+    // Episode publishing not implemented yet
+    // const episode = await webtoonService.publishEpisode(
+    //   req.params.episodeId,
+    //   req.user!.userId
+    // );
 
     res.json({
       success: true,
       message: "Episode published successfully",
-      data: episode,
+      data: null,
     });
   })
 );

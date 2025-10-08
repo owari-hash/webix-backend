@@ -1,11 +1,21 @@
 import mongoose, { Schema, Document } from "mongoose";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
-import { User as IUser } from "../types";
 
 mongoose.pluralize(null);
 
-export interface UserDocument extends IUser, Document {
+export interface UserDocument extends Document {
+  email: string;
+  passwordHash: string;
+  displayName: string;
+  photoURL?: string;
+  role: "super_admin" | "org_admin" | "org_moderator" | "org_user" | "viewer";
+  isActive: boolean;
+  twoFactorEnabled: boolean;
+  twoFactorSecret?: string;
+  lastLoginAt?: Date;
+  createdAt: Date;
+  updatedAt: Date;
   comparePassword(password: string): Promise<boolean>;
   generateTokens(): { accessToken: string; refreshToken: string };
 }

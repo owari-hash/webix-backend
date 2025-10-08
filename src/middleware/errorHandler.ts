@@ -38,7 +38,7 @@ export const errorHandler = async (
   // Log to audit log if user is authenticated
   if (req.user) {
     try {
-      await AuditLog.logAction({
+      const auditLog = new AuditLog({
         userId: req.user.userId,
         organizationId: req.organization?._id,
         action: "error_occurred",
@@ -53,6 +53,7 @@ export const errorHandler = async (
         ipAddress: req.ip,
         userAgent: req.get("User-Agent"),
       });
+      await auditLog.save();
     } catch (auditError) {
       console.error("Failed to log error to audit log:", auditError);
     }

@@ -1,32 +1,26 @@
 import mongoose, { Schema, Document } from "mongoose";
-import { Invoice as IInvoice, InvoiceItem } from "../types";
 
 mongoose.pluralize(null);
 
-export interface InvoiceDocument extends IInvoice, Document {}
-
-const InvoiceItemSchema = new Schema<InvoiceItem>({
-  description: {
-    type: String,
-    required: true,
-    trim: true,
-  },
-  quantity: {
-    type: Number,
-    required: true,
-    min: 1,
-  },
-  unitPrice: {
-    type: Number,
-    required: true,
-    min: 0,
-  },
-  total: {
-    type: Number,
-    required: true,
-    min: 0,
-  },
-});
+export interface InvoiceDocument extends Document {
+  organizationId: mongoose.Types.ObjectId;
+  invoiceNumber: string;
+  amount: number;
+  currency: string;
+  status: "draft" | "sent" | "paid" | "overdue" | "cancelled";
+  dueDate: Date;
+  paidAt?: Date;
+  description?: string;
+  items: Array<{
+    name: string;
+    description?: string;
+    quantity: number;
+    unitPrice: number;
+    total: number;
+  }>;
+  createdAt: Date;
+  updatedAt: Date;
+}
 
 const InvoiceSchema = new Schema<InvoiceDocument>(
   {
@@ -66,7 +60,6 @@ const InvoiceSchema = new Schema<InvoiceDocument>(
     paidAt: {
       type: Date,
     },
-    items: [InvoiceItemSchema],
   },
   {
     timestamps: true,
@@ -79,10 +72,6 @@ InvoiceSchema.index({ dueDate: 1 });
 InvoiceSchema.index({ createdAt: -1 });
 
 // Pre-save middleware to calculate total amount
-InvoiceItemSchema.pre("save", function (next) {
-  this.total = this.quantity * this.unitPrice;
-  next();
-});
 
 // Pre-save middleware to calculate invoice total
 InvoiceSchema.pre("save", function (next) {

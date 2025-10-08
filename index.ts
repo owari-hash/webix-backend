@@ -1,4 +1,5 @@
 import express from "express";
+import mongoose from "mongoose";
 import http from "http";
 import cors from "cors";
 import helmet from "helmet";
@@ -6,20 +7,16 @@ import compression from "compression";
 import rateLimit from "express-rate-limit";
 import { Server as SocketIOServer } from "socket.io";
 import dotenv from "dotenv";
-import connectDB from "./config/database";
-import { errorHandler, notFound } from "./middleware/errorHandler";
+dotenv.config({ path: "./.env" });
 
-// Load environment variables
-dotenv.config();
-
-// Import routes
-import authRoutes from "./routes/auth";
-import organizationRoutes from "./routes/organization";
-import webtoonRoutes from "./routes/webtoon";
-import analyticsRoutes from "./routes/analytics";
-import paymentRoutes from "./routes/payment";
-import notificationRoutes from "./routes/notification";
-import messageRoutes from "./routes/message";
+// Import routes directly from TypeScript files
+import authRoutes from "./src/routes/auth";
+import organizationRoutes from "./src/routes/organization";
+import webtoonRoutes from "./src/routes/webtoon";
+import analyticsRoutes from "./src/routes/analytics";
+import paymentRoutes from "./src/routes/payment";
+import notificationRoutes from "./src/routes/notification";
+import messageRoutes from "./src/routes/message";
 
 const app = express();
 const server = http.createServer(app);
@@ -30,11 +27,8 @@ const io = new SocketIOServer(server, {
   },
 });
 
-// Set timezone
-process.env.TZ = "Asia/Ulaanbaatar";
-
-// Connect to database
-connectDB();
+const dbUrl =
+  process.env.MONGODB_URI || "mongodb://localhost:27017/webix-backend";
 
 // Security middleware
 app.use(helmet());
@@ -112,15 +106,40 @@ io.on("connection", (socket) => {
 });
 
 // Error handling middleware
-app.use(notFound);
-app.use(errorHandler);
-
-const PORT = process.env.PORT || 3000;
-
-server.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`🌍 Environment: ${process.env.NODE_ENV || "development"}`);
-  console.log(`⏰ Timezone: ${process.env.TZ}`);
+app.use((err: any, req: any, res: any, next: any) => {
+  console.error(err.stack);
+  res.status(500).json({
+    success: false,
+    message: "Something went wrong!",
+    error:
+      process.env.NODE_ENV === "development"
+        ? err.message
+        : "Internal server error",
+  });
 });
+
+// 404 handler
+app.use("*", (req, res) => {
+  res.status(404).json({
+    success: false,
+    message: "Route not found",
+  });
+});
+
+// Connect to database and start server
+mongoose
+  .connect(dbUrl)
+  .then((result) => {
+    console.log("MongoDB холбогдлоо");
+    server.listen(process.env.PORT || 3000, () => {
+      console.log(`🚀 Server running on port ${process.env.PORT || 3000}`);
+      console.log(`🌍 Environment: ${process.env.NODE_ENV || "development"}`);
+      console.log(`⏰ Timezone: ${process.env.TZ}`);
+    });
+  })
+  .catch((err) => {
+    console.error("Database connection error:", err);
+    process.exit(1);
+  });
 
 export { io };

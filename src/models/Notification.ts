@@ -1,9 +1,19 @@
 import mongoose, { Schema, Document } from "mongoose";
-import { Notification as INotification } from "../types";
 
 mongoose.pluralize(null);
 
-export interface NotificationDocument extends INotification, Document {}
+export interface NotificationDocument extends Document {
+  userId: mongoose.Types.ObjectId;
+  organizationId?: mongoose.Types.ObjectId;
+  title: string;
+  message: string;
+  type: "info" | "warning" | "error" | "success";
+  isRead: boolean;
+  readAt?: Date;
+  metadata?: any;
+  createdAt: Date;
+  updatedAt: Date;
+}
 
 const NotificationSchema = new Schema<NotificationDocument>(
   {

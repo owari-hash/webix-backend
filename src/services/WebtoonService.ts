@@ -18,22 +18,14 @@ export class WebtoonService {
 
     await webtoon.save();
 
-    // Log webtoon creation
-    await AuditLog.logAction({
+    const auditLog = new AuditLog({
       userId,
       organizationId,
       action: "webtoon_created",
       resource: "webtoon",
       resourceId: webtoon._id,
     });
-
-    // Track analytics
-    await Analytics.trackMetric({
-      organizationId,
-      webtoonId: webtoon._id,
-      metricType: "content_views",
-      metricValue: 0,
-    });
+    await auditLog.save();
 
     return webtoon;
   }
@@ -41,45 +33,61 @@ export class WebtoonService {
   async getWebtoons(
     organizationId: string,
     page = 1,
-    limit = 20,
-    status?: string,
+    limit = 10,
     search?: string
   ): Promise<PaginatedResponse<any>> {
-    const result = await Webtoon.getByOrganization(
-      organizationId,
-      status,
-      page,
-      limit
-    );
-
+    const query: any = { organizationId };
     if (search) {
-      const searchResult = await Webtoon.search(
-        organizationId,
-        search,
-        page,
-        limit
-      );
-      return searchResult;
+      query.$or = [
+        { title: { $regex: search, $options: "i" } },
+        { description: { $regex: search, $options: "i" } },
+      ];
     }
 
+    const skip = (page - 1) * limit;
+    const webtoons = await Webtoon.find(query)
+      .populate("createdBy", "displayName email")
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    const total = await Webtoon.countDocuments(query);
+
     return {
-      data: result.webtoons,
-      pagination: result.pagination,
+      data: webtoons,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit),
+      },
     };
   }
 
-  async getWebtoonById(
-    webtoonId: string,
-    organizationId: string
-  ): Promise<any> {
-    const webtoon = await Webtoon.findOne({
-      _id: webtoonId,
-      organizationId,
-    }).populate("createdBy", "displayName photoURL");
-
+  async getWebtoonById(webtoonId: string): Promise<any> {
+    const webtoon = await Webtoon.findById(webtoonId).populate(
+      "createdBy",
+      "displayName email"
+    );
     if (!webtoon) {
       throw new Error("Webtoon not found");
     }
+    return webtoon;
+  }
+
+  async viewWebtoon(webtoonId: string, userId?: string): Promise<any> {
+    const webtoon = await this.getWebtoonById(webtoonId);
+
+    // Track view analytics
+    const analytics = new Analytics({
+      organizationId: webtoon.organizationId,
+      userId,
+      resourceType: "webtoon",
+      resourceId: webtoonId,
+      metricType: "webtoon_views",
+      metricValue: 1,
+    });
+    await analytics.save();
 
     return webtoon;
   }
@@ -87,10 +95,9 @@ export class WebtoonService {
   async updateWebtoon(
     webtoonId: string,
     updateData: any,
-    organizationId: string,
     userId: string
   ): Promise<any> {
-    const webtoon = await Webtoon.findOne({ _id: webtoonId, organizationId });
+    const webtoon = await Webtoon.findById(webtoonId);
     if (!webtoon) {
       throw new Error("Webtoon not found");
     }
@@ -98,234 +105,191 @@ export class WebtoonService {
     Object.assign(webtoon, updateData);
     await webtoon.save();
 
-    // Log webtoon update
-    await AuditLog.logAction({
+    const auditLog = new AuditLog({
       userId,
-      organizationId,
+      organizationId: webtoon.organizationId,
       action: "webtoon_updated",
       resource: "webtoon",
       resourceId: webtoonId,
     });
+    await auditLog.save();
 
     return webtoon;
   }
 
-  async deleteWebtoon(
-    webtoonId: string,
-    organizationId: string,
-    userId: string
-  ): Promise<void> {
-    const webtoon = await Webtoon.findOne({ _id: webtoonId, organizationId });
+  async deleteWebtoon(webtoonId: string, userId: string): Promise<void> {
+    const webtoon = await Webtoon.findById(webtoonId);
     if (!webtoon) {
       throw new Error("Webtoon not found");
     }
 
-    // Delete all episodes first
+    // Delete all episodes
     await WebtoonEpisode.deleteMany({ webtoonId });
 
     // Delete webtoon
     await Webtoon.findByIdAndDelete(webtoonId);
 
-    // Log webtoon deletion
-    await AuditLog.logAction({
+    const auditLog = new AuditLog({
       userId,
-      organizationId,
+      organizationId: webtoon.organizationId,
       action: "webtoon_deleted",
       resource: "webtoon",
       resourceId: webtoonId,
     });
+    await auditLog.save();
+  }
+
+  async publishWebtoon(webtoonId: string, userId: string): Promise<any> {
+    const webtoon = await Webtoon.findById(webtoonId);
+    if (!webtoon) {
+      throw new Error("Webtoon not found");
+    }
+
+    webtoon.status = "published";
+    webtoon.publishedAt = new Date();
+    await webtoon.save();
+
+    const auditLog = new AuditLog({
+      userId,
+      organizationId: webtoon.organizationId,
+      action: "webtoon_published",
+      resource: "webtoon",
+      resourceId: webtoonId,
+    });
+    await auditLog.save();
+
+    return webtoon;
   }
 
   async createEpisode(
-    episodeData: any,
     webtoonId: string,
-    organizationId: string,
+    episodeData: any,
     userId: string
   ): Promise<any> {
-    // Verify webtoon exists and user has access
-    const webtoon = await this.getWebtoonById(webtoonId, organizationId);
-
-    // Get next episode number
-    const episodeNumber = await WebtoonEpisode.getNextEpisodeNumber(webtoonId);
+    const webtoon = await Webtoon.findById(webtoonId);
+    if (!webtoon) {
+      throw new Error("Webtoon not found");
+    }
 
     const episode = new WebtoonEpisode({
       ...episodeData,
       webtoonId,
-      episodeNumber,
+      createdBy: userId,
     });
-
     await episode.save();
 
-    // Log episode creation
-    await AuditLog.logAction({
+    const auditLog = new AuditLog({
       userId,
-      organizationId,
+      organizationId: webtoon.organizationId,
       action: "episode_created",
-      resource: "webtoon_episode",
+      resource: "episode",
       resourceId: episode._id,
-      metadata: { webtoonId, episodeNumber },
+      metadata: { webtoonId, episodeNumber: episodeData.episodeNumber },
     });
+    await auditLog.save();
 
     return episode;
   }
 
   async getEpisodes(
     webtoonId: string,
-    organizationId: string,
     page = 1,
-    limit = 20,
-    status?: string
+    limit = 10
   ): Promise<PaginatedResponse<any>> {
-    // Verify webtoon exists and user has access
-    await this.getWebtoonById(webtoonId, organizationId);
+    const skip = (page - 1) * limit;
+    const episodes = await WebtoonEpisode.find({ webtoonId })
+      .populate("createdBy", "displayName email")
+      .sort({ episodeNumber: 1 })
+      .skip(skip)
+      .limit(limit);
 
-    const result = await WebtoonEpisode.getByWebtoon(
-      webtoonId,
-      status,
-      page,
-      limit
-    );
+    const total = await WebtoonEpisode.countDocuments({ webtoonId });
 
     return {
-      data: result.episodes,
-      pagination: result.pagination,
+      data: episodes,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit),
+      },
     };
   }
 
-  async getEpisodeById(
-    episodeId: string,
-    webtoonId: string,
-    organizationId: string
-  ): Promise<any> {
-    // Verify webtoon exists and user has access
-    await this.getWebtoonById(webtoonId, organizationId);
-
-    const episode = await WebtoonEpisode.findOne({ _id: episodeId, webtoonId });
+  async getEpisodeById(episodeId: string): Promise<any> {
+    const episode = await WebtoonEpisode.findById(episodeId).populate(
+      "createdBy",
+      "displayName email"
+    );
     if (!episode) {
       throw new Error("Episode not found");
     }
-
     return episode;
   }
 
   async updateEpisode(
     episodeId: string,
     updateData: any,
-    webtoonId: string,
-    organizationId: string,
     userId: string
   ): Promise<any> {
-    const episode = await this.getEpisodeById(
-      episodeId,
-      webtoonId,
-      organizationId
-    );
+    const episode = await WebtoonEpisode.findById(episodeId);
+    if (!episode) {
+      throw new Error("Episode not found");
+    }
 
     Object.assign(episode, updateData);
     await episode.save();
 
-    // Log episode update
-    await AuditLog.logAction({
+    // Get webtoon to get organizationId
+    const webtoon = await Webtoon.findById(episode.webtoonId);
+    const auditLog = new AuditLog({
       userId,
-      organizationId,
+      organizationId: webtoon?.organizationId,
       action: "episode_updated",
-      resource: "webtoon_episode",
+      resource: "episode",
       resourceId: episodeId,
-      metadata: { webtoonId },
+      metadata: { webtoonId: episode.webtoonId },
     });
+    await auditLog.save();
 
     return episode;
   }
 
-  async deleteEpisode(
-    episodeId: string,
-    webtoonId: string,
-    organizationId: string,
-    userId: string
-  ): Promise<void> {
-    const episode = await this.getEpisodeById(
-      episodeId,
-      webtoonId,
-      organizationId
-    );
+  async deleteEpisode(episodeId: string, userId: string): Promise<void> {
+    const episode = await WebtoonEpisode.findById(episodeId);
+    if (!episode) {
+      throw new Error("Episode not found");
+    }
 
     await WebtoonEpisode.findByIdAndDelete(episodeId);
 
-    // Log episode deletion
-    await AuditLog.logAction({
+    // Get webtoon to get organizationId
+    const webtoon = await Webtoon.findById(episode.webtoonId);
+    const auditLog = new AuditLog({
       userId,
-      organizationId,
+      organizationId: webtoon?.organizationId,
       action: "episode_deleted",
-      resource: "webtoon_episode",
+      resource: "episode",
       resourceId: episodeId,
-      metadata: { webtoonId },
+      metadata: { webtoonId: episode.webtoonId },
     });
+    await auditLog.save();
   }
 
-  async publishWebtoon(
-    webtoonId: string,
-    organizationId: string,
-    userId: string
-  ): Promise<any> {
-    const webtoon = await this.getWebtoonById(webtoonId, organizationId);
+  async viewEpisode(episodeId: string, userId?: string): Promise<any> {
+    const episode = await this.getEpisodeById(episodeId);
 
-    webtoon.status = "published";
-    webtoon.publishedAt = new Date();
-    await webtoon.save();
-
-    // Log webtoon publication
-    await AuditLog.logAction({
-      userId,
-      organizationId,
-      action: "webtoon_published",
-      resource: "webtoon",
-      resourceId: webtoonId,
-    });
-
-    return webtoon;
-  }
-
-  async publishEpisode(
-    episodeId: string,
-    webtoonId: string,
-    organizationId: string,
-    userId: string
-  ): Promise<any> {
-    const episode = await this.getEpisodeById(
-      episodeId,
-      webtoonId,
-      organizationId
-    );
-
-    episode.status = "published";
-    episode.publishedAt = new Date();
-    await episode.save();
-
-    // Log episode publication
-    await AuditLog.logAction({
-      userId,
-      organizationId,
-      action: "episode_published",
-      resource: "webtoon_episode",
-      resourceId: episodeId,
-      metadata: { webtoonId },
-    });
-
-    return episode;
-  }
-
-  async viewWebtoon(
-    webtoonId: string,
-    organizationId: string,
-    userId?: string
-  ): Promise<void> {
     // Track view analytics
-    await Analytics.trackMetric({
-      organizationId,
+    const analytics = new Analytics({
+      organizationId: episode.organizationId,
       userId,
-      webtoonId,
-      metricType: "webtoon_views",
+      resourceType: "episode",
+      resourceId: episodeId,
+      metricType: "episode_views",
       metricValue: 1,
     });
+    await analytics.save();
+
+    return episode;
   }
 }

@@ -10,10 +10,10 @@ export class OrganizationService {
     userId: string
   ): Promise<any> {
     // Check subdomain availability
-    const isAvailable = await Organization.checkSubdomainAvailability(
-      orgData.subdomain
-    );
-    if (!isAvailable) {
+    const existingOrg = await Organization.findOne({
+      subdomain: orgData.subdomain,
+    });
+    if (existingOrg) {
       throw new Error("Subdomain already exists");
     }
 
@@ -22,7 +22,7 @@ export class OrganizationService {
     await organization.save();
 
     // Add creator as admin
-    await UserOrganization.create({
+    const userOrg = new UserOrganization({
       userId,
       organizationId: organization._id,
       role: "admin",
@@ -43,15 +43,17 @@ export class OrganizationService {
         "payments:write",
       ],
     });
+    await userOrg.save();
 
     // Log organization creation
-    await AuditLog.logAction({
+    const auditLog = new AuditLog({
       userId,
       organizationId: organization._id,
       action: "organization_created",
       resource: "organization",
       resourceId: organization._id,
     });
+    await auditLog.save();
 
     return organization;
   }
@@ -65,7 +67,7 @@ export class OrganizationService {
   }
 
   async getOrganizationBySubdomain(subdomain: string): Promise<any> {
-    const organization = await Organization.getBySubdomain(subdomain);
+    const organization = await Organization.findOne({ subdomain });
     if (!organization) {
       throw new Error("Organization not found");
     }
@@ -82,30 +84,33 @@ export class OrganizationService {
       throw new Error("Organization not found");
     }
 
-    // Check if subdomain is being changed
+    // Check subdomain availability if changing subdomain
     if (
       updateData.subdomain &&
       updateData.subdomain !== organization.subdomain
     ) {
-      const isAvailable = await Organization.checkSubdomainAvailability(
-        updateData.subdomain
-      );
-      if (!isAvailable) {
+      const existingOrg = await Organization.findOne({
+        subdomain: updateData.subdomain,
+      });
+      if (existingOrg) {
         throw new Error("Subdomain already exists");
       }
     }
 
+    // Update organization
     Object.assign(organization, updateData);
     await organization.save();
 
     // Log organization update
-    await AuditLog.logAction({
+    const auditLog = new AuditLog({
       userId,
       organizationId,
       action: "organization_updated",
       resource: "organization",
       resourceId: organizationId,
+      metadata: { changes: updateData },
     });
+    await auditLog.save();
 
     return organization;
   }
@@ -119,30 +124,28 @@ export class OrganizationService {
       throw new Error("Organization not found");
     }
 
-    // Check if there are any users in the organization
-    const userCount = await UserOrganization.countDocuments({ organizationId });
-    if (userCount > 0) {
-      throw new Error("Cannot delete organization with existing users");
-    }
+    // Delete all user-organization relationships
+    await UserOrganization.deleteMany({ organizationId });
 
+    // Delete organization
     await Organization.findByIdAndDelete(organizationId);
 
     // Log organization deletion
-    await AuditLog.logAction({
+    const auditLog = new AuditLog({
       userId,
       action: "organization_deleted",
       resource: "organization",
       resourceId: organizationId,
     });
+    await auditLog.save();
   }
 
   async getOrganizations(
     page = 1,
-    limit = 20,
+    limit = 10,
     search?: string
   ): Promise<PaginatedResponse<any>> {
     const query: any = {};
-
     if (search) {
       query.$or = [
         { name: { $regex: search, $options: "i" } },
@@ -151,7 +154,6 @@ export class OrganizationService {
     }
 
     const skip = (page - 1) * limit;
-
     const organizations = await Organization.find(query)
       .sort({ createdAt: -1 })
       .skip(skip)
@@ -170,127 +172,19 @@ export class OrganizationService {
     };
   }
 
-  async addUserToOrganization(
-    organizationId: string,
-    userEmail: string,
-    role: string,
-    permissions: string[],
-    addedBy: string
-  ): Promise<any> {
-    // Find user by email
-    const user = await User.findOne({ email: userEmail });
-    if (!user) {
-      throw new Error("User not found");
-    }
-
-    // Check if user is already in organization
-    const existingMembership = await UserOrganization.findOne({
-      userId: user._id,
-      organizationId,
-    });
-    if (existingMembership) {
-      throw new Error("User is already a member of this organization");
-    }
-
-    // Add user to organization
-    const userOrg = new UserOrganization({
-      userId: user._id,
-      organizationId,
-      role,
-      permissions,
-    });
-
-    await userOrg.save();
-
-    // Log user addition
-    await AuditLog.logAction({
-      userId: addedBy,
-      organizationId,
-      action: "user_added_to_organization",
-      resource: "user_organization",
-      resourceId: userOrg._id,
-      metadata: { addedUserId: user._id, role, permissions },
-    });
-
-    return userOrg;
-  }
-
-  async removeUserFromOrganization(
-    organizationId: string,
-    userId: string,
-    removedBy: string
-  ): Promise<void> {
-    const userOrg = await UserOrganization.findOne({ userId, organizationId });
-    if (!userOrg) {
-      throw new Error("User is not a member of this organization");
-    }
-
-    await UserOrganization.findByIdAndDelete(userOrg._id);
-
-    // Log user removal
-    await AuditLog.logAction({
-      userId: removedBy,
-      organizationId,
-      action: "user_removed_from_organization",
-      resource: "user_organization",
-      resourceId: userOrg._id,
-      metadata: { removedUserId: userId },
-    });
-  }
-
-  async updateUserRole(
-    organizationId: string,
-    userId: string,
-    role: string,
-    permissions: string[],
-    updatedBy: string
-  ): Promise<any> {
-    const userOrg = await UserOrganization.findOne({ userId, organizationId });
-    if (!userOrg) {
-      throw new Error("User is not a member of this organization");
-    }
-
-    userOrg.role = role;
-    userOrg.permissions = permissions;
-    await userOrg.save();
-
-    // Log role update
-    await AuditLog.logAction({
-      userId: updatedBy,
-      organizationId,
-      action: "user_role_updated",
-      resource: "user_organization",
-      resourceId: userOrg._id,
-      metadata: {
-        updatedUserId: userId,
-        newRole: role,
-        newPermissions: permissions,
-      },
-    });
-
-    return userOrg;
-  }
-
   async getOrganizationUsers(
     organizationId: string,
     page = 1,
-    limit = 20
+    limit = 10
   ): Promise<PaginatedResponse<any>> {
     const skip = (page - 1) * limit;
-
-    const userOrgs = await UserOrganization.find({
-      organizationId,
-      isActive: true,
-    })
+    const userOrgs = await UserOrganization.find({ organizationId })
       .populate("userId", "displayName email photoURL role isActive")
       .sort({ joinedAt: -1 })
       .skip(skip)
       .limit(limit);
 
-    const total = await UserOrganization.countDocuments({
-      organizationId,
-      isActive: true,
-    });
+    const total = await UserOrganization.countDocuments({ organizationId });
 
     return {
       data: userOrgs,
@@ -303,7 +197,145 @@ export class OrganizationService {
     };
   }
 
+  async addUserToOrganization(
+    organizationId: string,
+    userEmail: string,
+    role: "admin" | "moderator" | "user" | "viewer",
+    addedBy: string
+  ): Promise<any> {
+    // Find user by email
+    const user = await User.findOne({ email: userEmail });
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    // Check if user is already in organization
+    const existingUserOrg = await UserOrganization.findOne({
+      userId: user._id,
+      organizationId,
+    });
+    if (existingUserOrg) {
+      throw new Error("User is already in this organization");
+    }
+
+    // Add user to organization
+    const userOrg = new UserOrganization({
+      userId: user._id,
+      organizationId,
+      role,
+      permissions: this.getDefaultPermissions(role),
+    });
+    await userOrg.save();
+
+    // Log user addition
+    const auditLog = new AuditLog({
+      userId: addedBy,
+      organizationId,
+      action: "user_added_to_organization",
+      resource: "user",
+      resourceId: user._id,
+      metadata: { role, userEmail },
+    });
+    await auditLog.save();
+
+    return userOrg;
+  }
+
+  async removeUserFromOrganization(
+    organizationId: string,
+    userId: string,
+    removedBy: string
+  ): Promise<void> {
+    const userOrg = await UserOrganization.findOne({
+      userId,
+      organizationId,
+    });
+    if (!userOrg) {
+      throw new Error("User is not in this organization");
+    }
+
+    await UserOrganization.findByIdAndDelete(userOrg._id);
+
+    // Log user removal
+    const auditLog = new AuditLog({
+      userId: removedBy,
+      organizationId,
+      action: "user_removed_from_organization",
+      resource: "user",
+      resourceId: userId,
+    });
+    await auditLog.save();
+  }
+
+  async updateUserRole(
+    organizationId: string,
+    userId: string,
+    role: "admin" | "moderator" | "user" | "viewer",
+    updatedBy: string
+  ): Promise<any> {
+    const userOrg = await UserOrganization.findOne({
+      userId,
+      organizationId,
+    });
+    if (!userOrg) {
+      throw new Error("User is not in this organization");
+    }
+
+    userOrg.role = role;
+    userOrg.permissions = this.getDefaultPermissions(role);
+    await userOrg.save();
+
+    // Log role update
+    const auditLog = new AuditLog({
+      userId: updatedBy,
+      organizationId,
+      action: "user_role_updated",
+      resource: "user",
+      resourceId: userId,
+      metadata: { newRole: role },
+    });
+    await auditLog.save();
+
+    return userOrg;
+  }
+
+  private getDefaultPermissions(role: string): string[] {
+    const permissions: { [key: string]: string[] } = {
+      admin: [
+        "org:read",
+        "org:write",
+        "org:delete",
+        "user:read",
+        "user:write",
+        "user:delete",
+        "content:read",
+        "content:write",
+        "content:delete",
+        "analytics:read",
+        "reports:read",
+        "reports:write",
+        "payments:read",
+        "payments:write",
+      ],
+      moderator: [
+        "org:read",
+        "user:read",
+        "user:write",
+        "content:read",
+        "content:write",
+        "content:delete",
+        "analytics:read",
+        "reports:read",
+      ],
+      user: ["org:read", "content:read", "content:write", "analytics:read"],
+      viewer: ["org:read", "content:read", "analytics:read"],
+    };
+
+    return permissions[role] || [];
+  }
+
   async checkSubdomainAvailability(subdomain: string): Promise<boolean> {
-    return Organization.checkSubdomainAvailability(subdomain);
+    const existingOrg = await Organization.findOne({ subdomain });
+    return !existingOrg;
   }
 }

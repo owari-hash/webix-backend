@@ -1,9 +1,18 @@
 import mongoose, { Schema, Document } from "mongoose";
-import { Message as IMessage } from "../types";
 
 mongoose.pluralize(null);
 
-export interface MessageDocument extends IMessage, Document {}
+export interface MessageDocument extends Document {
+  senderId: mongoose.Types.ObjectId;
+  receiverId: mongoose.Types.ObjectId;
+  content: string;
+  messageType: "text" | "image" | "file";
+  attachments?: string[];
+  isRead: boolean;
+  readAt?: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}
 
 const MessageSchema = new Schema<MessageDocument>(
   {
@@ -19,11 +28,7 @@ const MessageSchema = new Schema<MessageDocument>(
       required: true,
       index: true,
     },
-    organizationId: {
-      type: Schema.Types.ObjectId,
-      ref: "organization",
-      index: true,
-    },
+
     content: {
       type: String,
       required: true,
@@ -170,8 +175,6 @@ MessageSchema.statics.getUserConversations = async function (userId: string) {
       $sort: { "lastMessage.createdAt": -1 },
     },
   ];
-
-  return this.aggregate(pipeline);
 };
 
 // Static method to mark messages as read

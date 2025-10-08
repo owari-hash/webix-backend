@@ -1,9 +1,17 @@
 import mongoose, { Schema, Document } from "mongoose";
-import { UserOrganization as IUserOrganization } from "../types";
 
 mongoose.pluralize(null);
 
-export interface UserOrganizationDocument extends IUserOrganization, Document {}
+export interface UserOrganizationDocument extends Document {
+  userId: mongoose.Types.ObjectId;
+  organizationId: mongoose.Types.ObjectId;
+  role: "admin" | "moderator" | "user" | "viewer";
+  permissions: string[];
+  joinedAt: Date;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
 
 const UserOrganizationSchema = new Schema<UserOrganizationDocument>(
   {

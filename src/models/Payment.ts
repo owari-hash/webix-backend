@@ -1,9 +1,20 @@
 import mongoose, { Schema, Document } from "mongoose";
-import { Payment as IPayment } from "../types";
 
 mongoose.pluralize(null);
 
-export interface PaymentDocument extends IPayment, Document {}
+export interface PaymentDocument extends Document {
+  organizationId: mongoose.Types.ObjectId;
+  invoiceId: mongoose.Types.ObjectId;
+  amount: number;
+  currency: string;
+  method: "credit_card" | "bank_transfer" | "paypal" | "stripe";
+  status: "pending" | "completed" | "failed" | "refunded";
+  transactionId?: string;
+  gatewayResponse?: any;
+  processedAt?: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}
 
 const PaymentSchema = new Schema<PaymentDocument>(
   {

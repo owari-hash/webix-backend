@@ -1,9 +1,21 @@
 import mongoose, { Schema, Document } from "mongoose";
-import { Analytics as IAnalytics } from "../types";
 
 mongoose.pluralize(null);
 
-export interface AnalyticsDocument extends IAnalytics, Document {}
+export interface AnalyticsDocument extends Document {
+  organizationId: mongoose.Types.ObjectId;
+  userId?: mongoose.Types.ObjectId;
+  webtoonId?: mongoose.Types.ObjectId;
+  resourceType: string;
+  resourceId: string;
+  metricType: string;
+  metricValue: number;
+  metadata?: any;
+  date: Date;
+  timestamp: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}
 
 const AnalyticsSchema = new Schema<AnalyticsDocument>(
   {
@@ -153,19 +165,19 @@ AnalyticsSchema.statics.getUserActivity = async function (
   startDate: Date,
   endDate: Date
 ) {
-  const pipeline = [
+  const pipeline: any[] = [
     {
       $match: {
         userId: new mongoose.Types.ObjectId(userId),
-        date: { $gte: startDate, $lte: endDate },
+        timestamp: { $gte: startDate, $lte: endDate },
       },
     },
     {
       $group: {
         _id: {
-          year: { $year: "$date" },
-          month: { $month: "$date" },
-          day: { $dayOfMonth: "$date" },
+          year: { $year: "$timestamp" },
+          month: { $month: "$timestamp" },
+          day: { $dayOfMonth: "$timestamp" },
         },
         totalActivity: { $sum: "$metricValue" },
         activityTypes: { $addToSet: "$metricType" },

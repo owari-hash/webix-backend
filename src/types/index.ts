@@ -191,8 +191,22 @@ export interface LoginDto {
   password: string;
 }
 
+export interface UserResponse {
+  _id?: string;
+  email: string;
+  displayName: string;
+  photoURL?: string;
+  role: "super_admin" | "org_admin" | "org_moderator" | "org_user" | "viewer";
+  isActive: boolean;
+  twoFactorEnabled: boolean;
+  twoFactorSecret?: string;
+  lastLoginAt?: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface AuthResponse {
-  user: User;
+  user: UserResponse;
   accessToken: string;
   refreshToken: string;
 }
