@@ -152,6 +152,180 @@ app.get("/api/test-db", async (req, res) => {
   }
 });
 
+// Dynamic data query endpoint - Get all documents from a collection
+app.get("/api/collection/:collectionName", async (req, res) => {
+  try {
+    const { collectionName } = req.params;
+    const { limit = 100, skip = 0, sort = "_id" } = req.query;
+
+    const collection = req.db.db.collection(collectionName);
+
+    // Get total count
+    const total = await collection.countDocuments();
+
+    // Get documents with pagination
+    const documents = await collection
+      .find({})
+      .sort({ [sort]: -1 })
+      .limit(parseInt(limit))
+      .skip(parseInt(skip))
+      .toArray();
+
+    res.json({
+      success: true,
+      message: `Data retrieved from ${collectionName}`,
+      database: req.dbName,
+      subdomain: req.subdomain,
+      collection: collectionName,
+      total: total,
+      count: documents.length,
+      limit: parseInt(limit),
+      skip: parseInt(skip),
+      data: documents,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch data",
+      error: error.message,
+      database: req.dbName,
+      collection: req.params.collectionName,
+    });
+  }
+});
+
+// Dynamic data query endpoint - Get single document by ID
+app.get("/api/collection/:collectionName/:id", async (req, res) => {
+  try {
+    const { collectionName, id } = req.params;
+    const collection = req.db.db.collection(collectionName);
+
+    // Try to find by _id (handle both ObjectId and string)
+    let document;
+    try {
+      // Try as ObjectId first
+      const ObjectId = mongoose.Types.ObjectId;
+      document = await collection.findOne({ _id: new ObjectId(id) });
+    } catch (e) {
+      // If ObjectId fails, try as string
+      document = await collection.findOne({ _id: id });
+    }
+
+    if (!document) {
+      return res.status(404).json({
+        success: false,
+        message: "Document not found",
+        database: req.dbName,
+        collection: collectionName,
+        id: id,
+      });
+    }
+
+    res.json({
+      success: true,
+      message: `Document retrieved from ${collectionName}`,
+      database: req.dbName,
+      subdomain: req.subdomain,
+      collection: collectionName,
+      data: document,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch document",
+      error: error.message,
+      database: req.dbName,
+      collection: req.params.collectionName,
+    });
+  }
+});
+
+// Dynamic data query endpoint - Search/filter documents
+app.get("/api/collection/:collectionName/search", async (req, res) => {
+  try {
+    const { collectionName } = req.params;
+    const { q, field, limit = 50 } = req.query;
+
+    const collection = req.db.db.collection(collectionName);
+
+    // Build query
+    let query = {};
+    if (q && field) {
+      // Search in specific field
+      query[field] = { $regex: q, $options: "i" }; // Case-insensitive search
+    } else if (q) {
+      // Search in all text fields (basic implementation)
+      query = {
+        $or: [
+          { title: { $regex: q, $options: "i" } },
+          { name: { $regex: q, $options: "i" } },
+          { email: { $regex: q, $options: "i" } },
+          { description: { $regex: q, $options: "i" } },
+        ],
+      };
+    }
+
+    const documents = await collection
+      .find(query)
+      .limit(parseInt(limit))
+      .toArray();
+
+    res.json({
+      success: true,
+      message: `Search results from ${collectionName}`,
+      database: req.dbName,
+      subdomain: req.subdomain,
+      collection: collectionName,
+      query: query,
+      count: documents.length,
+      data: documents,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Search failed",
+      error: error.message,
+      database: req.dbName,
+      collection: req.params.collectionName,
+    });
+  }
+});
+
+// Get database stats - shows collection counts
+app.get("/api/db-stats", async (req, res) => {
+  try {
+    const collections = await req.db.db.listCollections().toArray();
+    const stats = {};
+
+    // Get document count for each collection
+    for (const col of collections) {
+      const collection = req.db.db.collection(col.name);
+      const count = await collection.countDocuments();
+      stats[col.name] = count;
+    }
+
+    res.json({
+      success: true,
+      message: "Database statistics",
+      database: req.dbName,
+      subdomain: req.subdomain,
+      collections: stats,
+      totalCollections: collections.length,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to get database stats",
+      error: error.message,
+      database: req.dbName,
+    });
+  }
+});
+
 // Start server
 app.listen(port, () => {
   console.log(`🚀 Server running on port ${port}`);
