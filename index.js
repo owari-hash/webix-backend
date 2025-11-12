@@ -103,7 +103,7 @@ app.get("/", (req, res) => {
 });
 
 // Welcome route with detailed database info
-app.get("/api/welcome", (req, res) => {
+app.get("/api2/welcome", (req, res) => {
   res.json({
     success: true,
     message: `Welcome ${req.subdomain}!`,
@@ -118,7 +118,7 @@ app.get("/api/welcome", (req, res) => {
 });
 
 // Health check endpoint
-app.get("/api/health", (req, res) => {
+app.get("/api2/health", (req, res) => {
   res.json({
     success: true,
     message: "Server is running",
@@ -129,7 +129,7 @@ app.get("/api/health", (req, res) => {
 });
 
 // Test database connection endpoint
-app.get("/api/test-db", async (req, res) => {
+app.get("/api2/test-db", async (req, res) => {
   try {
     // Test the connection by listing collections
     const collections = await req.db.db.listCollections().toArray();
@@ -153,7 +153,7 @@ app.get("/api/test-db", async (req, res) => {
 });
 
 // Dynamic data query endpoint - Get all documents from a collection
-app.get("/api/collection/:collectionName", async (req, res) => {
+app.get("/api2/collection/:collectionName", async (req, res) => {
   try {
     const { collectionName } = req.params;
     const { limit = 100, skip = 0, sort = "_id" } = req.query;
@@ -196,7 +196,7 @@ app.get("/api/collection/:collectionName", async (req, res) => {
 });
 
 // Dynamic data query endpoint - Get single document by ID
-app.get("/api/collection/:collectionName/:id", async (req, res) => {
+app.get("/api2/collection/:collectionName/:id", async (req, res) => {
   try {
     const { collectionName, id } = req.params;
     const collection = req.db.db.collection(collectionName);
@@ -243,7 +243,7 @@ app.get("/api/collection/:collectionName/:id", async (req, res) => {
 });
 
 // Dynamic data query endpoint - Search/filter documents
-app.get("/api/collection/:collectionName/search", async (req, res) => {
+app.get("/api2/collection/:collectionName/search", async (req, res) => {
   try {
     const { collectionName } = req.params;
     const { q, field, limit = 50 } = req.query;
@@ -295,7 +295,7 @@ app.get("/api/collection/:collectionName/search", async (req, res) => {
 });
 
 // Get database stats - shows collection counts
-app.get("/api/db-stats", async (req, res) => {
+app.get("/api2/db-stats", async (req, res) => {
   try {
     const collections = await req.db.db.listCollections().toArray();
     const stats = {};
@@ -327,7 +327,7 @@ app.get("/api/db-stats", async (req, res) => {
 });
 
 // Insert test data into a collection
-app.post("/api/collection/:collectionName/insert", async (req, res) => {
+app.post("/api2/collection/:collectionName/insert", async (req, res) => {
   try {
     const { collectionName } = req.params;
     const { data } = req.body; // Can be single object or array
@@ -365,7 +365,7 @@ app.post("/api/collection/:collectionName/insert", async (req, res) => {
 });
 
 // Seed test data - Creates sample collections with test data
-app.post("/api/seed", async (req, res) => {
+app.post("/api2/seed", async (req, res) => {
   try {
     const db = req.db.db;
     const results = {};
@@ -475,7 +475,7 @@ app.post("/api/seed", async (req, res) => {
 });
 
 // Test database separation - Compare data across subdomains
-app.get("/api/test-separation", async (req, res) => {
+app.get("/api2/test-separation", async (req, res) => {
   try {
     const db = req.db.db;
     const results = {
@@ -520,9 +520,9 @@ app.get("/api/test-separation", async (req, res) => {
         ),
       },
       instructions: {
-        step1: `Visit ${req.subdomain}.anzaidev.fun/api/seed to add test data`,
+        step1: `Visit ${req.subdomain}.anzaidev.fun/api2/seed to add test data`,
         step2: `Visit different subdomains to verify data is separated`,
-        step3: `Compare /api/test-separation results from different subdomains`,
+        step3: `Compare /api2/test-separation results from different subdomains`,
       },
       timestamp: new Date().toISOString(),
     });
@@ -550,9 +550,9 @@ app.listen(port, () => {
   });
   console.log(`\n✨ Test subdomain: test.anzaidev.fun -> webix-test database`);
   console.log(`\n📋 Available Endpoints:`);
-  console.log(`   POST /api/seed - Seed test data`);
-  console.log(`   GET  /api/test-separation - Test database separation`);
-  console.log(`   GET  /api/collection/:name - Get collection data`);
-  console.log(`   POST /api/collection/:name/insert - Insert test data`);
-  console.log(`   GET  /api/db-stats - Database statistics`);
+  console.log(`   POST /api2/seed - Seed test data`);
+  console.log(`   GET  /api2/test-separation - Test database separation`);
+  console.log(`   GET  /api2/collection/:name - Get collection data`);
+  console.log(`   POST /api2/collection/:name/insert - Insert test data`);
+  console.log(`   GET  /api2/db-stats - Database statistics`);
 });
