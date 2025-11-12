@@ -326,6 +326,217 @@ app.get("/api/db-stats", async (req, res) => {
   }
 });
 
+// Insert test data into a collection
+app.post("/api/collection/:collectionName/insert", async (req, res) => {
+  try {
+    const { collectionName } = req.params;
+    const { data } = req.body; // Can be single object or array
+
+    const collection = req.db.db.collection(collectionName);
+
+    let result;
+    if (Array.isArray(data)) {
+      // Insert multiple documents
+      result = await collection.insertMany(data);
+    } else {
+      // Insert single document
+      result = await collection.insertOne(data);
+    }
+
+    res.json({
+      success: true,
+      message: `Test data inserted into ${collectionName}`,
+      database: req.dbName,
+      subdomain: req.subdomain,
+      collection: collectionName,
+      insertedCount: result.insertedCount || (result.insertedId ? 1 : 0),
+      insertedIds: result.insertedIds || [result.insertedId],
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to insert test data",
+      error: error.message,
+      database: req.dbName,
+      collection: req.params.collectionName,
+    });
+  }
+});
+
+// Seed test data - Creates sample collections with test data
+app.post("/api/seed", async (req, res) => {
+  try {
+    const db = req.db.db;
+    const results = {};
+
+    // Seed Users collection
+    const usersCollection = db.collection("users");
+    const usersData = [
+      {
+        name: `${req.subdomain} User 1`,
+        email: `user1@${req.subdomain}.com`,
+        role: "admin",
+        subdomain: req.subdomain,
+        database: req.dbName,
+        createdAt: new Date(),
+      },
+      {
+        name: `${req.subdomain} User 2`,
+        email: `user2@${req.subdomain}.com`,
+        role: "user",
+        subdomain: req.subdomain,
+        database: req.dbName,
+        createdAt: new Date(),
+      },
+      {
+        name: `${req.subdomain} User 3`,
+        email: `user3@${req.subdomain}.com`,
+        role: "viewer",
+        subdomain: req.subdomain,
+        database: req.dbName,
+        createdAt: new Date(),
+      },
+    ];
+    const usersResult = await usersCollection.insertMany(usersData);
+    results.users = {
+      inserted: usersResult.insertedCount,
+      ids: Object.values(usersResult.insertedIds),
+    };
+
+    // Seed Webtoons collection
+    const webtoonsCollection = db.collection("webtoons");
+    const webtoonsData = [
+      {
+        title: `${req.subdomain} Webtoon 1`,
+        description: `This is a test webtoon from ${req.subdomain} subdomain`,
+        author: `${req.subdomain} Author`,
+        subdomain: req.subdomain,
+        database: req.dbName,
+        status: "active",
+        views: 0,
+        createdAt: new Date(),
+      },
+      {
+        title: `${req.subdomain} Webtoon 2`,
+        description: `Another test webtoon from ${req.subdomain}`,
+        author: `${req.subdomain} Author 2`,
+        subdomain: req.subdomain,
+        database: req.dbName,
+        status: "draft",
+        views: 0,
+        createdAt: new Date(),
+      },
+    ];
+    const webtoonsResult = await webtoonsCollection.insertMany(webtoonsData);
+    results.webtoons = {
+      inserted: webtoonsResult.insertedCount,
+      ids: Object.values(webtoonsResult.insertedIds),
+    };
+
+    // Seed Settings collection
+    const settingsCollection = db.collection("settings");
+    const settingsData = {
+      subdomain: req.subdomain,
+      database: req.dbName,
+      siteName: `${req.subdomain} Site`,
+      theme: "default",
+      language: "mn",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    const settingsResult = await settingsCollection.insertOne(settingsData);
+    results.settings = {
+      inserted: settingsResult.insertedId ? 1 : 0,
+      id: settingsResult.insertedId,
+    };
+
+    res.json({
+      success: true,
+      message: `Test data seeded successfully for ${req.subdomain}`,
+      database: req.dbName,
+      subdomain: req.subdomain,
+      collections: results,
+      totalInserted:
+        results.users.inserted +
+        results.webtoons.inserted +
+        results.settings.inserted,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to seed test data",
+      error: error.message,
+      database: req.dbName,
+      subdomain: req.subdomain,
+    });
+  }
+});
+
+// Test database separation - Compare data across subdomains
+app.get("/api/test-separation", async (req, res) => {
+  try {
+    const db = req.db.db;
+    const results = {
+      currentSubdomain: req.subdomain,
+      currentDatabase: req.dbName,
+      collections: {},
+    };
+
+    // Get data from current database
+    const collections = ["users", "webtoons", "settings"];
+    for (const colName of collections) {
+      const collection = db.collection(colName);
+      const count = await collection.countDocuments();
+      const sample = await collection.find({}).limit(2).toArray();
+
+      results.collections[colName] = {
+        count: count,
+        sample: sample.map((doc) => ({
+          _id: doc._id,
+          subdomain: doc.subdomain,
+          database: doc.database,
+          // Include key fields for identification
+          name: doc.name || doc.title || doc.siteName || "N/A",
+        })),
+      };
+    }
+
+    res.json({
+      success: true,
+      message: "Database separation test results",
+      test: results,
+      verification: {
+        allDocumentsHaveSubdomain: Object.values(results.collections).every(
+          (col) =>
+            col.sample.every((doc) => doc.subdomain === req.subdomain) ||
+            col.count === 0
+        ),
+        allDocumentsHaveDatabase: Object.values(results.collections).every(
+          (col) =>
+            col.sample.every((doc) => doc.database === req.dbName) ||
+            col.count === 0
+        ),
+      },
+      instructions: {
+        step1: `Visit ${req.subdomain}.anzaidev.fun/api/seed to add test data`,
+        step2: `Visit different subdomains to verify data is separated`,
+        step3: `Compare /api/test-separation results from different subdomains`,
+      },
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to test database separation",
+      error: error.message,
+      database: req.dbName,
+      subdomain: req.subdomain,
+    });
+  }
+});
+
 // Start server
 app.listen(port, () => {
   console.log(`🚀 Server running on port ${port}`);
@@ -338,5 +549,10 @@ app.listen(port, () => {
     console.log(`   ${subdomain} -> ${db}`);
   });
   console.log(`\n✨ Test subdomain: test.anzaidev.fun -> webix-test database`);
-  console.log(`✨ Welcome route: GET / or GET /api/welcome`);
+  console.log(`\n📋 Available Endpoints:`);
+  console.log(`   POST /api/seed - Seed test data`);
+  console.log(`   GET  /api/test-separation - Test database separation`);
+  console.log(`   GET  /api/collection/:name - Get collection data`);
+  console.log(`   POST /api/collection/:name/insert - Insert test data`);
+  console.log(`   GET  /api/db-stats - Database statistics`);
 });
