@@ -48,6 +48,7 @@ app.use(async (req, res, next) => {
 
     // Check if subdomain is localhost
     const isLocalhost = subdomain === "localhost" || subdomain === "127.0.0.1";
+    const isMapped = subdomainToDb.hasOwnProperty(subdomain);
 
     // Only allow mapped subdomains or localhost
     if (!isMapped && !isLocalhost) {
@@ -59,6 +60,16 @@ app.use(async (req, res, next) => {
         allowedSubdomains: Object.keys(subdomainToDb),
         hint: "Add this subdomain to the subdomainToDb mapping in index.js",
       });
+    }
+
+    // Get database name: only use mapped databases
+    let dbName;
+    if (isMapped) {
+      // Use mapped database name
+      dbName = subdomainToDb[subdomain];
+    } else {
+      // Default to 'udirdlaga' for localhost
+      dbName = subdomainToDb["udirdlaga"];
     }
 
     // Create or reuse database connection
