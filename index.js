@@ -63,16 +63,28 @@ app.use(async (req, res, next) => {
       dbName = `webix-${subdomain}`;
 
       // Check if database actually exists in MongoDB
+      // MongoDB only shows databases in listDatabases() if they have data
+      // So we need to check by trying to list collections
       try {
-        const adminConnection = await mongoose.createConnection(
-          MONGODB_BASE_URI
+        const checkConnection = await mongoose.createConnection(
+          `${MONGODB_BASE_URI}/${dbName}`
         );
-        const adminDb = adminConnection.db.admin();
-        const dbList = await adminDb.listDatabases();
-        const dbExists = dbList.databases.some((db) => db.name === dbName);
-        await adminConnection.close();
+        const collections = await checkConnection.db
+          .listCollections()
+          .toArray();
+        await checkConnection.close();
 
-        if (!dbExists) {
+        // If database has no collections, it doesn't really exist (MongoDB creates empty DBs on first write)
+        // Check via admin to see if it's in the database list
+        const adminConn = await mongoose.createConnection(MONGODB_BASE_URI);
+        const admin = adminConn.db.admin();
+        const dbList = await admin.listDatabases();
+        await adminConn.close();
+
+        const dbInList = dbList.databases.some((db) => db.name === dbName);
+
+        // Database doesn't exist if it's not in the list AND has no collections
+        if (!dbInList && collections.length === 0) {
           return res.status(404).json({
             success: false,
             message: "Database not found",
@@ -85,14 +97,18 @@ app.use(async (req, res, next) => {
                   db.name.startsWith("webix-") || db.name.startsWith("webix_")
               )
               .map((db) => db.name),
-            hint: "Create the database in MongoDB first, or add subdomain to mapping",
+            hint: "Create the database in MongoDB first (it must have at least one collection with data), or add subdomain to mapping",
           });
         }
       } catch (checkError) {
-        // If check fails, still try to connect (might be permission issue)
-        console.warn(
-          `Could not verify database existence: ${checkError.message}`
-        );
+        // If check fails, reject the request - database doesn't exist
+        return res.status(404).json({
+          success: false,
+          message: "Database not found",
+          error: `Database "${dbName}" does not exist or cannot be accessed: ${checkError.message}`,
+          subdomain: subdomain,
+          database: dbName,
+        });
       }
     }
 
