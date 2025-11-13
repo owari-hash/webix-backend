@@ -159,6 +159,13 @@ app.use(async (req, res, next) => {
   }
 });
 
+// Import routes
+const authRoutes = require("./routes/auth");
+const { authenticate, authorize } = require("./middleware/auth");
+
+// Mount routes
+app.use("/api2/auth", authRoutes);
+
 // Welcome route - shows subdomain and database separation
 app.get("/", (req, res) => {
   res.json({
@@ -196,6 +203,28 @@ app.get("/api2/health", (req, res) => {
     subdomain: req.subdomain,
     database: req.dbName,
     timestamp: new Date().toISOString(),
+  });
+});
+
+// Protected route example - requires authentication
+app.get("/api2/protected", authenticate, (req, res) => {
+  res.json({
+    success: true,
+    message: "You have access to protected content",
+    user: req.user,
+    subdomain: req.subdomain,
+    database: req.dbName,
+  });
+});
+
+// Admin only route example - requires authentication and admin role
+app.get("/api2/admin", authenticate, authorize("admin"), (req, res) => {
+  res.json({
+    success: true,
+    message: "Admin access granted",
+    user: req.user,
+    subdomain: req.subdomain,
+    database: req.dbName,
   });
 });
 
@@ -621,9 +650,23 @@ app.listen(port, () => {
   });
   console.log(`\n✨ Test subdomain: test.anzaidev.fun -> webix-test database`);
   console.log(`\n📋 Available Endpoints:`);
+  console.log(`\n🔐 Authentication:`);
+  console.log(`   POST /api2/auth/register - Register new user`);
+  console.log(`   POST /api2/auth/login - Login user`);
+  console.log(`   GET  /api2/auth/me - Get current user (protected)`);
+  console.log(`   POST /api2/auth/logout - Logout user`);
+  console.log(`\n🔒 Protected Routes:`);
+  console.log(
+    `   GET  /api2/protected - Protected route (requires authentication)`
+  );
+  console.log(`   GET  /api2/admin - Admin only route (requires admin role)`);
+  console.log(`\n📊 Data Management:`);
   console.log(`   POST /api2/seed - Seed test data`);
   console.log(`   GET  /api2/test-separation - Test database separation`);
   console.log(`   GET  /api2/collection/:name - Get collection data`);
   console.log(`   POST /api2/collection/:name/insert - Insert test data`);
   console.log(`   GET  /api2/db-stats - Database statistics`);
+  console.log(
+    `\n📖 See API_DOCUMENTATION.md for frontend integration examples`
+  );
 });
