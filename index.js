@@ -61,6 +61,39 @@ app.use(async (req, res, next) => {
     } else {
       // Auto-detect: automatically use webix-{subdomain} if database exists
       dbName = `webix-${subdomain}`;
+
+      // Check if database actually exists in MongoDB
+      try {
+        const adminConnection = await mongoose.createConnection(
+          MONGODB_BASE_URI
+        );
+        const adminDb = adminConnection.db.admin();
+        const dbList = await adminDb.listDatabases();
+        const dbExists = dbList.databases.some((db) => db.name === dbName);
+        await adminConnection.close();
+
+        if (!dbExists) {
+          return res.status(404).json({
+            success: false,
+            message: "Database not found",
+            error: `Database "${dbName}" does not exist in MongoDB for subdomain "${subdomain}".`,
+            subdomain: subdomain,
+            database: dbName,
+            availableDatabases: dbList.databases
+              .filter(
+                (db) =>
+                  db.name.startsWith("webix-") || db.name.startsWith("webix_")
+              )
+              .map((db) => db.name),
+            hint: "Create the database in MongoDB first, or add subdomain to mapping",
+          });
+        }
+      } catch (checkError) {
+        // If check fails, still try to connect (might be permission issue)
+        console.warn(
+          `Could not verify database existence: ${checkError.message}`
+        );
+      }
     }
 
     // Create or reuse database connection
