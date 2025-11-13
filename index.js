@@ -59,47 +59,68 @@ app.use(async (req, res, next) => {
       // Default to 'udirdlaga' for localhost
       dbName = subdomainToDb["udirdlaga"];
     } else {
-      // Auto-detect: automatically use webix-{subdomain} if database exists
+      // Auto-detect: ONLY use webix-{subdomain} IF IT EXISTS
       dbName = `webix-${subdomain}`;
 
-      // Check if database actually exists in MongoDB
-      // Only databases with data appear in listDatabases()
+      // STRICT CHECK: Database MUST exist in MongoDB
+      // Use one of the existing connections to get database list
+      let dbExists = false;
+      let availableDbs = [];
+
       try {
-        // Use a temporary connection to admin database
-        const tempConn = await mongoose.createConnection(
-          `${MONGODB_BASE_URI}/admin`
-        );
-        const adminDb = tempConn.db;
-        const admin = adminDb.admin();
-        const dbList = await admin.listDatabases();
-        await tempConn.close();
+        // Get an existing connection or create temporary one
+        let checkConn;
+        const existingDbNames = Object.keys(dbConnections);
 
-        const dbExists = dbList.databases.some((db) => db.name === dbName);
-
-        if (!dbExists) {
-          return res.status(404).json({
-            success: false,
-            message: "Database not found",
-            error: `Database "${dbName}" does not exist in MongoDB for subdomain "${subdomain}".`,
-            subdomain: subdomain,
-            database: dbName,
-            availableDatabases: dbList.databases
-              .filter(
-                (db) =>
-                  db.name.startsWith("webix-") || db.name.startsWith("webix_")
-              )
-              .map((db) => db.name),
-            hint: "Create the database in MongoDB first (it must have at least one collection with data), or add subdomain to mapping",
-          });
+        if (existingDbNames.length > 0) {
+          // Use an existing connection
+          checkConn = dbConnections[existingDbNames[0]];
+        } else {
+          // Create a temporary connection
+          checkConn = await mongoose.createConnection(
+            `${MONGODB_BASE_URI}/admin`
+          );
         }
+
+        // List all databases
+        const client = checkConn.getClient();
+        const adminDb = client.db("admin");
+        const dbListResult = await adminDb.admin().listDatabases();
+
+        // Close temporary connection if we created one
+        if (existingDbNames.length === 0) {
+          await checkConn.close();
+        }
+
+        availableDbs = dbListResult.databases
+          .filter(
+            (db) => db.name.startsWith("webix-") || db.name.startsWith("webix_")
+          )
+          .map((db) => db.name);
+
+        dbExists = dbListResult.databases.some((db) => db.name === dbName);
       } catch (checkError) {
-        // If check fails, reject the request - database doesn't exist
-        return res.status(404).json({
+        console.error("Database check error:", checkError);
+        // If we can't check, BLOCK access
+        return res.status(500).json({
           success: false,
-          message: "Database not found",
-          error: `Database "${dbName}" does not exist or cannot be accessed: ${checkError.message}`,
+          message: "Cannot verify database existence",
+          error: checkError.message,
           subdomain: subdomain,
           database: dbName,
+        });
+      }
+
+      // BLOCK if database doesn't exist
+      if (!dbExists) {
+        return res.status(404).json({
+          success: false,
+          message: "Database does NOT exist",
+          error: `Database "${dbName}" was not found in MongoDB.`,
+          subdomain: subdomain,
+          requestedDatabase: dbName,
+          availableDatabases: availableDbs,
+          hint: "Only existing databases can be accessed. Create the database in MongoDB first.",
         });
       }
     }
