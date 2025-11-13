@@ -63,28 +63,20 @@ app.use(async (req, res, next) => {
       dbName = `webix-${subdomain}`;
 
       // Check if database actually exists in MongoDB
-      // MongoDB only shows databases in listDatabases() if they have data
-      // So we need to check by trying to list collections
+      // Only databases with data appear in listDatabases()
       try {
-        const checkConnection = await mongoose.createConnection(
-          `${MONGODB_BASE_URI}/${dbName}`
+        // Use a temporary connection to admin database
+        const tempConn = await mongoose.createConnection(
+          `${MONGODB_BASE_URI}/admin`
         );
-        const collections = await checkConnection.db
-          .listCollections()
-          .toArray();
-        await checkConnection.close();
-
-        // If database has no collections, it doesn't really exist (MongoDB creates empty DBs on first write)
-        // Check via admin to see if it's in the database list
-        const adminConn = await mongoose.createConnection(MONGODB_BASE_URI);
-        const admin = adminConn.db.admin();
+        const adminDb = tempConn.db;
+        const admin = adminDb.admin();
         const dbList = await admin.listDatabases();
-        await adminConn.close();
+        await tempConn.close();
 
-        const dbInList = dbList.databases.some((db) => db.name === dbName);
+        const dbExists = dbList.databases.some((db) => db.name === dbName);
 
-        // Database doesn't exist if it's not in the list AND has no collections
-        if (!dbInList && collections.length === 0) {
+        if (!dbExists) {
           return res.status(404).json({
             success: false,
             message: "Database not found",
