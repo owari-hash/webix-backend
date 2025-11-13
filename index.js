@@ -50,26 +50,17 @@ app.use(async (req, res, next) => {
     const isLocalhost = subdomain === "localhost" || subdomain === "127.0.0.1";
     const isMapped = subdomainToDb.hasOwnProperty(subdomain);
 
-    // Only allow mapped subdomains or localhost
-    if (!isMapped && !isLocalhost) {
-      return res.status(403).json({
-        success: false,
-        message: "Subdomain not allowed",
-        error: `Subdomain "${subdomain}" is not configured.`,
-        subdomain: subdomain,
-        allowedSubdomains: Object.keys(subdomainToDb),
-        hint: "Add this subdomain to the subdomainToDb mapping in index.js",
-      });
-    }
-
-    // Get database name: only use mapped databases
+    // Get database name: use mapping if exists, otherwise auto-detect
     let dbName;
     if (isMapped) {
       // Use mapped database name
       dbName = subdomainToDb[subdomain];
-    } else {
+    } else if (isLocalhost) {
       // Default to 'udirdlaga' for localhost
       dbName = subdomainToDb["udirdlaga"];
+    } else {
+      // Auto-detect: automatically use webix-{subdomain} if database exists
+      dbName = `webix-${subdomain}`;
     }
 
     // Create or reuse database connection
