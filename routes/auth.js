@@ -87,62 +87,80 @@ router.post("/register", async (req, res) => {
 });
 
 // @route   POST /api2/auth/login
-// @desc    Login user
+// @desc    Login user (supports both old and new User schema)
 // @access  Public
 router.post("/login", async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, username } = req.body;
 
     // Validation
-    if (!email || !password) {
+    if ((!email && !username) || !password) {
       return res.status(400).json({
         success: false,
-        message: "Please provide email and password",
+        message: "Please provide email/username and password",
       });
     }
 
     // Get subdomain from request
     const subdomain = req.subdomain;
 
-    // Find user by email and subdomain (with password field)
-    const User = req.db.model("User", require("../models/User").schema);
-    const user = await User.findOne({ email, subdomain }).select("+password");
+    // Try to find user in the User collection (case-insensitive)
+    const collection = req.db.collection("User");
+    
+    // Build query - support both email and username
+    const query = {};
+    if (email) {
+      query.email = { $regex: new RegExp(`^${email}$`, 'i') };
+    } else if (username) {
+      query.username = { $regex: new RegExp(`^${username}$`, 'i') };
+    }
+
+    const user = await collection.findOne(query);
 
     if (!user) {
       return res.status(401).json({
         success: false,
-        message: "Invalid credentials",
+        message: "Invalid credentials - user not found",
       });
     }
 
-    // Check if user is active
-    if (!user.isActive) {
+    // Check if user is active (support both 'status' and 'isActive' fields)
+    if (user.status === 'inactive' || user.isActive === false) {
       return res.status(401).json({
         success: false,
         message: "Account is inactive. Please contact support.",
       });
     }
 
-    // Compare password
-    const isPasswordValid = await user.comparePassword(password);
+    // Check password using bcrypt
+    const bcrypt = require("bcryptjs");
+    const isPasswordValid = await bcrypt.compare(password, user.password);
 
     if (!isPasswordValid) {
       return res.status(401).json({
         success: false,
-        message: "Invalid credentials",
+        message: "Invalid credentials - wrong password",
       });
     }
 
-    // Update last login
-    user.lastLogin = new Date();
-    await user.save();
+    // Update last login/activity
+    await collection.updateOne(
+      { _id: user._id },
+      { 
+        $set: { 
+          lastLogin: new Date(),
+          'stats.lastActivity': new Date()
+        } 
+      }
+    );
 
     // Generate JWT token
     const token = jwt.sign(
       {
         userId: user._id,
         email: user.email,
-        subdomain: user.subdomain,
+        username: user.username,
+        subdomain: subdomain,
         role: user.role,
       },
       JWT_SECRET,
@@ -155,11 +173,15 @@ router.post("/login", async (req, res) => {
       token,
       user: {
         id: user._id,
-        name: user.name,
+        name: user.firstName ? `${user.firstName} ${user.lastName}` : user.name,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        username: user.username,
         email: user.email,
         role: user.role,
-        subdomain: user.subdomain,
-        lastLogin: user.lastLogin,
+        status: user.status,
+        subdomain: subdomain,
+        lastLogin: new Date(),
       },
     });
   } catch (error) {
