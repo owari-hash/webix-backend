@@ -162,11 +162,16 @@ app.use(async (req, res, next) => {
 // Import routes
 const authRoutes = require("./routes/auth");
 const webtoonRoutes = require("./routes/webtoon");
+const uploadRoutes = require("./routes/upload");
 const { authenticate, authorize } = require("./middleware/auth");
+
+// Serve uploaded files as static
+app.use("/uploads", express.static("uploads"));
 
 // Mount routes
 app.use("/api2/auth", authRoutes);
 app.use("/api2/webtoon", webtoonRoutes);
+app.use("/api2/upload", uploadRoutes);
 
 // Welcome route - shows subdomain and database separation
 app.get("/", (req, res) => {
