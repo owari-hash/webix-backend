@@ -161,10 +161,12 @@ app.use(async (req, res, next) => {
 
 // Import routes
 const authRoutes = require("./routes/auth");
+const webtoonRoutes = require("./routes/webtoon");
 const { authenticate, authorize } = require("./middleware/auth");
 
 // Mount routes
 app.use("/api2/auth", authRoutes);
+app.use("/api2/webtoon", webtoonRoutes);
 
 // Welcome route - shows subdomain and database separation
 app.get("/", (req, res) => {

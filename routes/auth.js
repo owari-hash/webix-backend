@@ -106,13 +106,13 @@ router.post("/login", async (req, res) => {
 
     // Try to find user in the User collection (case-insensitive)
     const collection = req.db.collection("User");
-    
+
     // Build query - support both email and username
     const query = {};
     if (email) {
-      query.email = { $regex: new RegExp(`^${email}$`, 'i') };
+      query.email = { $regex: new RegExp(`^${email}$`, "i") };
     } else if (username) {
-      query.username = { $regex: new RegExp(`^${username}$`, 'i') };
+      query.username = { $regex: new RegExp(`^${username}$`, "i") };
     }
 
     const user = await collection.findOne(query);
@@ -125,7 +125,7 @@ router.post("/login", async (req, res) => {
     }
 
     // Check if user is active (support both 'status' and 'isActive' fields)
-    if (user.status === 'inactive' || user.isActive === false) {
+    if (user.status === "inactive" || user.isActive === false) {
       return res.status(401).json({
         success: false,
         message: "Account is inactive. Please contact support.",
@@ -146,11 +146,11 @@ router.post("/login", async (req, res) => {
     // Update last login/activity
     await collection.updateOne(
       { _id: user._id },
-      { 
-        $set: { 
+      {
+        $set: {
           lastLogin: new Date(),
-          'stats.lastActivity': new Date()
-        } 
+          "stats.lastActivity": new Date(),
+        },
       }
     );
 
