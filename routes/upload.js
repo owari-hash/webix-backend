@@ -17,7 +17,9 @@ router.post("/cover", authenticate, upload.single("cover"), (req, res) => {
     }
 
     // Return the file path
-    const fileUrl = `${req.protocol}://${req.get("host")}/uploads/${req.file.filename}`;
+    const fileUrl = `${req.protocol}://${req.get("host")}/uploads/${
+      req.file.filename
+    }`;
 
     res.json({
       success: true,
@@ -89,7 +91,9 @@ router.post("/single", authenticate, upload.single("image"), (req, res) => {
       });
     }
 
-    const fileUrl = `${req.protocol}://${req.get("host")}/uploads/${req.file.filename}`;
+    const fileUrl = `${req.protocol}://${req.get("host")}/uploads/${
+      req.file.filename
+    }`;
 
     res.json({
       success: true,
@@ -113,4 +117,3 @@ router.post("/single", authenticate, upload.single("image"), (req, res) => {
 });
 
 module.exports = router;
-
