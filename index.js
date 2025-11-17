@@ -170,6 +170,7 @@ app.use(async (req, res, next) => {
 const authRoutes = require("./routes/auth");
 const webtoonRoutes = require("./routes/webtoon");
 const uploadRoutes = require("./routes/upload");
+const usersRoutes = require("./routes/users");
 const { authenticate, authorize } = require("./middleware/auth");
 
 // Serve uploaded files as static
@@ -179,6 +180,7 @@ app.use("/uploads", express.static("uploads"));
 app.use("/api2/auth", authRoutes);
 app.use("/api2/webtoon", webtoonRoutes);
 app.use("/api2/upload", uploadRoutes);
+app.use("/api2/users", usersRoutes);
 
 // Welcome route - shows subdomain and database separation
 app.get("/", (req, res) => {
@@ -669,6 +671,13 @@ const server = app.listen(port, () => {
   console.log(`   POST /api2/auth/login - Login user`);
   console.log(`   GET  /api2/auth/me - Get current user (protected)`);
   console.log(`   POST /api2/auth/logout - Logout user`);
+  console.log(`\n👥 User Management:`);
+  console.log(`   GET    /api2/users - Get all users (Admin only)`);
+  console.log(`   GET    /api2/users/:id - Get user by ID`);
+  console.log(`   POST   /api2/users - Create new user (Admin only)`);
+  console.log(`   PUT    /api2/users/:id - Update user`);
+  console.log(`   PATCH  /api2/users/:id/premium - Toggle premium (Admin only)`);
+  console.log(`   DELETE /api2/users/:id - Delete user (Admin only)`);
   console.log(`\n🔒 Protected Routes:`);
   console.log(
     `   GET  /api2/protected - Protected route (requires authentication)`
