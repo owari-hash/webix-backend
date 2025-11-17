@@ -676,7 +676,9 @@ const server = app.listen(port, () => {
   console.log(`   GET    /api2/users/:id - Get user by ID`);
   console.log(`   POST   /api2/users - Create new user (Admin only)`);
   console.log(`   PUT    /api2/users/:id - Update user`);
-  console.log(`   PATCH  /api2/users/:id/premium - Toggle premium (Admin only)`);
+  console.log(
+    `   PATCH  /api2/users/:id/premium - Toggle premium (Admin only)`
+  );
   console.log(`   DELETE /api2/users/:id - Delete user (Admin only)`);
   console.log(`\n🔒 Protected Routes:`);
   console.log(
