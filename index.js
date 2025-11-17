@@ -35,8 +35,15 @@ app.use(
 );
 
 // Body parsing middleware - increased limits for large payloads
-app.use(express.json({ limit: "50mb" }));
-app.use(express.urlencoded({ limit: "50mb", extended: true }));
+app.use(express.json({ limit: "100mb" }));
+app.use(express.urlencoded({ limit: "100mb", extended: true }));
+
+// Increase server timeout for large uploads
+app.use((req, res, next) => {
+  req.setTimeout(300000); // 5 minutes
+  res.setTimeout(300000); // 5 minutes
+  next();
+});
 
 // Middleware to detect subdomain and connect to appropriate database
 app.use(async (req, res, next) => {
@@ -645,7 +652,7 @@ app.get("/api2/test-separation", async (req, res) => {
 });
 
 // Start server
-app.listen(port, () => {
+const server = app.listen(port, () => {
   console.log(`🚀 Server running on port ${port}`);
   console.log(`📊 MongoDB base URI: ${MONGODB_BASE_URI}`);
   console.log(
@@ -677,3 +684,8 @@ app.listen(port, () => {
     `\n📖 See API_DOCUMENTATION.md for frontend integration examples`
   );
 });
+
+// Set server timeout to 5 minutes for large uploads
+server.timeout = 300000; // 5 minutes in milliseconds
+server.keepAliveTimeout = 310000; // slightly longer than timeout
+server.headersTimeout = 320000; // slightly longer than keepAliveTimeout
