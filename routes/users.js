@@ -8,7 +8,7 @@ const router = express.Router();
 // @access  Private/Admin
 router.get("/", authenticate, authorize("admin"), async (req, res) => {
   try {
-    const collection = req.db.collection("User");
+    const collection = req.db.collection("users");
 
     // Pagination
     const page = parseInt(req.query.page) || 1;
@@ -57,7 +57,7 @@ router.get("/", authenticate, authorize("admin"), async (req, res) => {
 router.get("/:id", authenticate, async (req, res) => {
   try {
     const { ObjectId } = require("mongodb");
-    const collection = req.db.collection("User");
+    const collection = req.db.collection("users");
 
     const user = await collection.findOne(
       { _id: new ObjectId(req.params.id) },
@@ -108,7 +108,7 @@ router.post("/", authenticate, authorize("admin"), async (req, res) => {
       });
     }
 
-    const collection = req.db.collection("User");
+    const collection = req.db.collection("users");
 
     // Check if user already exists
     const existingUser = await collection.findOne({
@@ -169,7 +169,7 @@ router.put("/:id", authenticate, async (req, res) => {
   try {
     const { ObjectId } = require("mongodb");
     const bcrypt = require("bcryptjs");
-    const collection = req.db.collection("User");
+    const collection = req.db.collection("users");
 
     // Users can only update their own profile unless they're admin
     if (req.user.userId !== req.params.id && req.user.role !== "admin") {
@@ -238,7 +238,7 @@ router.patch(
   async (req, res) => {
     try {
       const { ObjectId } = require("mongodb");
-      const collection = req.db.collection("User");
+      const collection = req.db.collection("users");
 
       const { premium } = req.body;
 
@@ -284,7 +284,7 @@ router.patch(
 router.delete("/:id", authenticate, authorize("admin"), async (req, res) => {
   try {
     const { ObjectId } = require("mongodb");
-    const collection = req.db.collection("User");
+    const collection = req.db.collection("users");
 
     // Prevent deleting yourself
     if (req.user.userId === req.params.id) {
