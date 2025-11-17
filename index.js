@@ -674,15 +674,36 @@ const server = app.listen(port, () => {
     `   GET  /api2/protected - Protected route (requires authentication)`
   );
   console.log(`   GET  /api2/admin - Admin only route (requires admin role)`);
+  console.log(`\n📚 Webtoon/Comics:`);
+  console.log(`   POST   /api2/webtoon/comic - Create new comic`);
+  console.log(`   GET    /api2/webtoon/comics - Get all comics`);
+  console.log(`   GET    /api2/webtoon/comic/:id - Get comic by ID`);
+  console.log(`   PUT    /api2/webtoon/comic/:id - Update comic`);
+  console.log(`   DELETE /api2/webtoon/comic/:id - Delete comic`);
+  console.log(
+    `   POST   /api2/webtoon/comic/:comicId/chapter - Create chapter`
+  );
+  console.log(`   GET    /api2/webtoon/comic/:comicId/chapters - Get chapters`);
+  console.log(`   GET    /api2/webtoon/chapter/:id - Get chapter by ID`);
+  console.log(`   PUT    /api2/webtoon/chapter/:id - Update chapter`);
+  console.log(
+    `   PATCH  /api2/webtoon/chapter/:id - Append images to chapter ⭐`
+  );
+  console.log(`   DELETE /api2/webtoon/chapter/:id - Delete chapter`);
+  console.log(`\n📤 File Uploads:`);
+  console.log(`   POST /api2/upload/cover - Upload cover image`);
+  console.log(`   POST /api2/upload/pages - Upload chapter pages (multiple)`);
+  console.log(`   POST /api2/upload/single - Upload single image`);
   console.log(`\n📊 Data Management:`);
   console.log(`   POST /api2/seed - Seed test data`);
   console.log(`   GET  /api2/test-separation - Test database separation`);
   console.log(`   GET  /api2/collection/:name - Get collection data`);
   console.log(`   POST /api2/collection/:name/insert - Insert test data`);
   console.log(`   GET  /api2/db-stats - Database statistics`);
-  console.log(
-    `\n📖 See API_DOCUMENTATION.md for frontend integration examples`
-  );
+  console.log(`\n⚙️  Server Configuration:`);
+  console.log(`   Body Size Limit: 100mb`);
+  console.log(`   Request Timeout: 5 minutes`);
+  console.log(`   Token Expiration: 7 days`);
 });
 
 // Set server timeout to 5 minutes for large uploads

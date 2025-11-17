@@ -384,6 +384,73 @@ router.put("/chapter/:id", authenticate, async (req, res) => {
   }
 });
 
+// @route   PATCH /api2/webtoon/chapter/:id
+// @desc    Append images to existing chapter
+// @access  Private
+router.patch("/chapter/:id", authenticate, async (req, res) => {
+  try {
+    const { ObjectId } = require("mongodb");
+    const { images, append } = req.body;
+    const collection = req.db.collection("Chapter");
+
+    // Find the chapter first
+    const chapter = await collection.findOne({
+      _id: new ObjectId(req.params.id),
+    });
+
+    if (!chapter) {
+      return res.status(404).json({
+        success: false,
+        message: "Chapter not found",
+      });
+    }
+
+    let updateOperation;
+    if (append && Array.isArray(images)) {
+      // APPEND: Add new images to existing ones
+      updateOperation = {
+        $push: { images: { $each: images } },
+        $set: { updatedAt: new Date() },
+      };
+    } else if (Array.isArray(images)) {
+      // REPLACE: Replace all images
+      updateOperation = {
+        $set: {
+          images: images,
+          updatedAt: new Date(),
+        },
+      };
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: "Images array is required",
+      });
+    }
+
+    const result = await collection.findOneAndUpdate(
+      { _id: new ObjectId(req.params.id) },
+      updateOperation,
+      { returnDocument: "after" }
+    );
+
+    res.json({
+      success: true,
+      message: append
+        ? `${images.length} images appended successfully`
+        : "Images updated successfully",
+      chapter: result,
+      totalImages: result.images.length,
+    });
+  } catch (error) {
+    console.error("Append images error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to append images",
+      error: error.message,
+    });
+  }
+});
+
 // @route   DELETE /api2/webtoon/chapter/:id
 // @desc    Delete chapter
 // @access  Private
