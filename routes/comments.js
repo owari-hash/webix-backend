@@ -909,6 +909,140 @@ router.post("/:id/dislike", authenticate, async (req, res) => {
   }
 });
 
+// @route   POST /api2/comments/:id/undislike
+// @desc    Undislike a comment
+// @access  Private
+router.post("/:id/undislike", authenticate, async (req, res) => {
+  try {
+    const { ObjectId } = require("mongodb");
+    const { id } = req.params;
+    const userId = new ObjectId(req.user.userId);
+
+    const commentCollection = req.db.collection("Comment");
+    const likeCollection = req.db.collection("Like");
+
+    // Check if comment exists
+    const comment = await commentCollection.findOne({
+      _id: new ObjectId(id),
+    });
+
+    if (!comment) {
+      return res.status(404).json({
+        success: false,
+        message: "Comment not found",
+      });
+    }
+
+    // Check if user disliked this comment
+    const existingDislike = await likeCollection.findOne({
+      user: userId,
+      commentId: new ObjectId(id),
+      type: "dislike",
+    });
+
+    if (!existingDislike) {
+      return res.status(400).json({
+        success: false,
+        message: "You have not disliked this comment",
+      });
+    }
+
+    // Remove the dislike and decrement unLikes count
+    await likeCollection.deleteOne({
+      _id: existingDislike._id,
+    });
+
+    const unLikesCount = Math.max(0, (comment.unLikes || 0) - 1);
+    await commentCollection.updateOne(
+      { _id: new ObjectId(id) },
+      { $set: { unLikes: unLikesCount } }
+    );
+
+    res.json({
+      success: true,
+      message: "Comment undisliked successfully",
+      isLiked: false,
+      isDisliked: false,
+      likes: comment.likes || 0,
+      unLikes: unLikesCount,
+    });
+  } catch (error) {
+    console.error("Undislike comment error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to undislike comment",
+      error: error.message,
+    });
+  }
+});
+
+// @route   DELETE /api2/comments/:id/dislike
+// @desc    Undislike a comment
+// @access  Private
+router.delete("/:id/dislike", authenticate, async (req, res) => {
+  try {
+    const { ObjectId } = require("mongodb");
+    const { id } = req.params;
+    const userId = new ObjectId(req.user.userId);
+
+    const commentCollection = req.db.collection("Comment");
+    const likeCollection = req.db.collection("Like");
+
+    // Check if comment exists
+    const comment = await commentCollection.findOne({
+      _id: new ObjectId(id),
+    });
+
+    if (!comment) {
+      return res.status(404).json({
+        success: false,
+        message: "Comment not found",
+      });
+    }
+
+    // Check if user disliked this comment
+    const existingDislike = await likeCollection.findOne({
+      user: userId,
+      commentId: new ObjectId(id),
+      type: "dislike",
+    });
+
+    if (!existingDislike) {
+      return res.status(400).json({
+        success: false,
+        message: "You have not disliked this comment",
+      });
+    }
+
+    // Remove the dislike and decrement unLikes count
+    await likeCollection.deleteOne({
+      _id: existingDislike._id,
+    });
+
+    const unLikesCount = Math.max(0, (comment.unLikes || 0) - 1);
+    await commentCollection.updateOne(
+      { _id: new ObjectId(id) },
+      { $set: { unLikes: unLikesCount } }
+    );
+
+    res.json({
+      success: true,
+      message: "Comment undisliked successfully",
+      isLiked: false,
+      isDisliked: false,
+      likes: comment.likes || 0,
+      unLikes: unLikesCount,
+    });
+  } catch (error) {
+    console.error("Undislike comment error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to undislike comment",
+      error: error.message,
+    });
+  }
+});
+
 // @route   DELETE /api2/comments/:id/like
 // @desc    Unlike a comment
 // @access  Private
@@ -937,6 +1071,7 @@ router.delete("/:id/like", authenticate, async (req, res) => {
     const existingLike = await likeCollection.findOne({
       user: userId,
       commentId: new ObjectId(id),
+      type: "like",
     });
 
     if (!existingLike) {
@@ -961,7 +1096,9 @@ router.delete("/:id/like", authenticate, async (req, res) => {
       success: true,
       message: "Comment unliked successfully",
       isLiked: false,
+      isDisliked: false,
       likes: likesCount,
+      unLikes: comment.unLikes || 0,
     });
   } catch (error) {
     console.error("Unlike comment error:", error);
