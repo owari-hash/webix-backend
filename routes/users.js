@@ -99,7 +99,7 @@ router.get("/:id", authenticate, async (req, res) => {
 router.post("/", authenticate, authorize("admin"), async (req, res) => {
   try {
     const bcrypt = require("bcryptjs");
-    const { name, email, password, role, premium, isActive } = req.body;
+    const { name, email, password, role, premium, isActive, avatar } = req.body;
 
     if (!name || !email || !password) {
       return res.status(400).json({
@@ -135,6 +135,7 @@ router.post("/", authenticate, authorize("admin"), async (req, res) => {
       isActive: isActive !== undefined ? isActive : true,
       subdomain: req.subdomain,
       database: req.dbName,
+      avatar: avatar || null,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -179,7 +180,7 @@ router.put("/:id", authenticate, async (req, res) => {
       });
     }
 
-    const { name, email, password, role, premium, isActive } = req.body;
+    const { name, email, password, role, premium, isActive, avatar } = req.body;
 
     const updateFields = { updatedAt: new Date() };
 
@@ -193,6 +194,7 @@ router.put("/:id", authenticate, async (req, res) => {
     // All users can update these fields
     if (name) updateFields.name = name;
     if (email) updateFields.email = email.toLowerCase();
+    if (avatar !== undefined) updateFields.avatar = avatar;
 
     // Hash new password if provided
     if (password) {

@@ -14,7 +14,7 @@ const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "7d";
 // @access  Public
 router.post("/register", async (req, res) => {
   try {
-    const { name, email, password, role } = req.body;
+    const { name, email, password, role, avatar } = req.body;
 
     // Validation
     if (!name || !email || !password) {
@@ -47,6 +47,7 @@ router.post("/register", async (req, res) => {
       role: role || "user",
       subdomain,
       database,
+      avatar: avatar || null,
     });
 
     await user.save();
@@ -73,6 +74,7 @@ router.post("/register", async (req, res) => {
         email: user.email,
         role: user.role,
         subdomain: user.subdomain,
+        avatar: user.avatar,
         createdAt: user.createdAt,
       },
     });
@@ -181,6 +183,7 @@ router.post("/login", async (req, res) => {
         role: user.role,
         status: user.status,
         subdomain: subdomain,
+        avatar: user.avatar,
         lastLogin: new Date(),
       },
     });
