@@ -310,7 +310,12 @@ router.get("/comic/:comicId", async (req, res) => {
         const author = await populateAuthor(req.db, comment.author);
 
         // Fetch replies for this comment
-        const replies = await fetchReplies(req.db, comment._id);
+        const replies = await fetchReplies(
+          req.db,
+          comment._id,
+          50,
+          currentUserId
+        );
 
         // Get reply count
         const replyCount = await commentCollection.countDocuments({
@@ -375,24 +380,58 @@ router.get("/chapter/:chapterId", async (req, res) => {
       parentId: null,
     });
 
+    // Get current user ID if authenticated (for like status)
+    let currentUserId = null;
+    if (req.headers.authorization) {
+      try {
+        const jwt = require("jsonwebtoken");
+        const JWT_SECRET =
+          process.env.JWT_SECRET || "your-secret-key-change-this-in-production";
+        const token = req.headers.authorization.split(" ")[1];
+        if (token) {
+          const decoded = jwt.verify(token, JWT_SECRET);
+          currentUserId = new ObjectId(decoded.userId);
+        }
+      } catch (e) {
+        // Not authenticated, that's okay
+      }
+    }
+
     // Populate author information and fetch replies
     const commentsWithAuthors = await Promise.all(
       comments.map(async (comment) => {
         const author = await populateAuthor(req.db, comment.author);
 
         // Fetch replies for this comment
-        const replies = await fetchReplies(req.db, comment._id);
+        const replies = await fetchReplies(
+          req.db,
+          comment._id,
+          50,
+          currentUserId
+        );
 
         // Get reply count
         const replyCount = await commentCollection.countDocuments({
           parentId: comment._id,
         });
 
+        // Check if current user liked this comment
+        let isLiked = false;
+        if (currentUserId) {
+          const likeCollection = req.db.collection("Like");
+          const like = await likeCollection.findOne({
+            user: currentUserId,
+            commentId: comment._id,
+          });
+          isLiked = !!like;
+        }
+
         return {
           ...comment,
           author,
           replies,
           replyCount,
+          isLiked,
         };
       })
     );
@@ -548,6 +587,134 @@ router.delete("/:id", authenticate, async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to delete comment",
+      error: error.message,
+    });
+  }
+});
+
+// @route   POST /api2/comments/:id/like
+// @desc    Like or unlike a comment
+// @access  Private
+router.post("/:id/like", authenticate, async (req, res) => {
+  try {
+    const { ObjectId } = require("mongodb");
+    const { id } = req.params;
+    const userId = new ObjectId(req.user.userId);
+
+    const commentCollection = req.db.collection("Comment");
+    const likeCollection = req.db.collection("Like");
+
+    // Check if comment exists
+    const comment = await commentCollection.findOne({
+      _id: new ObjectId(id),
+    });
+
+    if (!comment) {
+      return res.status(404).json({
+        success: false,
+        message: "Comment not found",
+      });
+    }
+
+    // Check if user already liked this comment
+    const existingLike = await likeCollection.findOne({
+      user: userId,
+      commentId: new ObjectId(id),
+    });
+
+    let isLiked = false;
+    let likesCount = comment.likes || 0;
+
+    if (existingLike) {
+      // Unlike: Remove the like and decrement count
+      await likeCollection.deleteOne({
+        _id: existingLike._id,
+      });
+      likesCount = Math.max(0, likesCount - 1);
+      await commentCollection.updateOne(
+        { _id: new ObjectId(id) },
+        { $set: { likes: likesCount } }
+      );
+      isLiked = false;
+    } else {
+      // Like: Add the like and increment count
+      const like = {
+        user: userId,
+        commentId: new ObjectId(id),
+        comicId: null,
+        chapterId: null,
+        subdomain: req.subdomain,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      await likeCollection.insertOne(like);
+      likesCount = likesCount + 1;
+      await commentCollection.updateOne(
+        { _id: new ObjectId(id) },
+        { $set: { likes: likesCount } }
+      );
+      isLiked = true;
+    }
+
+    res.json({
+      success: true,
+      message: isLiked
+        ? "Comment liked successfully"
+        : "Comment unliked successfully",
+      isLiked,
+      likes: likesCount,
+    });
+  } catch (error) {
+    console.error("Like comment error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to like/unlike comment",
+      error: error.message,
+    });
+  }
+});
+
+// @route   GET /api2/comments/:id/likes
+// @desc    Get like status for a comment (check if current user liked it)
+// @access  Private
+router.get("/:id/likes", authenticate, async (req, res) => {
+  try {
+    const { ObjectId } = require("mongodb");
+    const { id } = req.params;
+    const userId = new ObjectId(req.user.userId);
+
+    const commentCollection = req.db.collection("Comment");
+    const likeCollection = req.db.collection("Like");
+
+    // Check if comment exists
+    const comment = await commentCollection.findOne(
+      { _id: new ObjectId(id) },
+      { projection: { likes: 1 } }
+    );
+
+    if (!comment) {
+      return res.status(404).json({
+        success: false,
+        message: "Comment not found",
+      });
+    }
+
+    // Check if user liked this comment
+    const existingLike = await likeCollection.findOne({
+      user: userId,
+      commentId: new ObjectId(id),
+    });
+
+    res.json({
+      success: true,
+      isLiked: !!existingLike,
+      likes: comment.likes || 0,
+    });
+  } catch (error) {
+    console.error("Get comment likes error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to get comment likes",
       error: error.message,
     });
   }
