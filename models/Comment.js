@@ -36,14 +36,25 @@ const commentSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    parentId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Comment",
+      default: null,
+    },
   },
   {
     timestamps: true,
   }
 );
 
-// Validation: Either comicId or chapterId must be provided
+// Validation: Either comicId or chapterId must be provided (unless it's a reply)
 commentSchema.pre("validate", function (next) {
+  // If it's a reply (has parentId), it will inherit comicId/chapterId from parent
+  if (this.parentId) {
+    return next();
+  }
+
+  // For top-level comments, either comicId or chapterId must be provided
   if (!this.comicId && !this.chapterId) {
     return next(new Error("Either comicId or chapterId must be provided"));
   }
@@ -58,6 +69,7 @@ commentSchema.pre("validate", function (next) {
 // Indexes for faster queries
 commentSchema.index({ comicId: 1, createdAt: -1 });
 commentSchema.index({ chapterId: 1, createdAt: -1 });
+commentSchema.index({ parentId: 1, createdAt: -1 });
 commentSchema.index({ author: 1 });
 commentSchema.index({ subdomain: 1 });
 
