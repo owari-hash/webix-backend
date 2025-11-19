@@ -2,6 +2,92 @@ const express = require("express");
 const { authenticate, authorize } = require("../middleware/auth");
 const router = express.Router();
 
+// @route   GET /api2/organizations/logo
+// @desc    Get organization logo by subdomain (Public - no auth required)
+// @access  Public
+router.get("/logo", async (req, res) => {
+  try {
+    const subdomain = req.subdomain || req.query.subdomain;
+
+    if (!subdomain) {
+      return res.status(400).json({
+        success: false,
+        message: "Subdomain is required",
+      });
+    }
+
+    const organizationCollection = req.centralDb.collection("Organization");
+
+    const organization = await organizationCollection.findOne(
+      { subdomain },
+      { projection: { logo: 1, name: 1, displayName: 1, subdomain: 1 } }
+    );
+
+    if (!organization) {
+      return res.status(404).json({
+        success: false,
+        message: "Organization not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        logo: organization.logo || null,
+        name: organization.name,
+        displayName: organization.displayName,
+        subdomain: organization.subdomain,
+      },
+    });
+  } catch (error) {
+    console.error("Get organization logo error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to get organization logo",
+      error: error.message,
+    });
+  }
+});
+
+// @route   GET /api2/organizations/:subdomain/logo
+// @desc    Get organization logo by subdomain parameter (Public - no auth required)
+// @access  Public
+router.get("/:subdomain/logo", async (req, res) => {
+  try {
+    const { subdomain } = req.params;
+    const organizationCollection = req.centralDb.collection("Organization");
+
+    const organization = await organizationCollection.findOne(
+      { subdomain },
+      { projection: { logo: 1, name: 1, displayName: 1, subdomain: 1 } }
+    );
+
+    if (!organization) {
+      return res.status(404).json({
+        success: false,
+        message: "Organization not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        logo: organization.logo || null,
+        name: organization.name,
+        displayName: organization.displayName,
+        subdomain: organization.subdomain,
+      },
+    });
+  } catch (error) {
+    console.error("Get organization logo error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to get organization logo",
+      error: error.message,
+    });
+  }
+});
+
 // @route   GET /api2/organizations
 // @desc    Get all organizations (Admin only)
 // @access  Private/Admin
@@ -308,34 +394,39 @@ router.put("/:subdomain", authenticate, async (req, res) => {
 // @route   DELETE /api2/organizations/:subdomain
 // @desc    Delete organization (Admin only)
 // @access  Private/Admin
-router.delete("/:subdomain", authenticate, authorize("admin"), async (req, res) => {
-  try {
-    const { subdomain } = req.params;
-    const organizationCollection = req.centralDb.collection("Organization");
+router.delete(
+  "/:subdomain",
+  authenticate,
+  authorize("admin"),
+  async (req, res) => {
+    try {
+      const { subdomain } = req.params;
+      const organizationCollection = req.centralDb.collection("Organization");
 
-    const organization = await organizationCollection.findOne({ subdomain });
-    if (!organization) {
-      return res.status(404).json({
+      const organization = await organizationCollection.findOne({ subdomain });
+      if (!organization) {
+        return res.status(404).json({
+          success: false,
+          message: "Organization not found",
+        });
+      }
+
+      await organizationCollection.deleteOne({ subdomain });
+
+      res.json({
+        success: true,
+        message: "Organization deleted successfully",
+      });
+    } catch (error) {
+      console.error("Delete organization error:", error);
+      res.status(500).json({
         success: false,
-        message: "Organization not found",
+        message: "Failed to delete organization",
+        error: error.message,
       });
     }
-
-    await organizationCollection.deleteOne({ subdomain });
-
-    res.json({
-      success: true,
-      message: "Organization deleted successfully",
-    });
-  } catch (error) {
-    console.error("Delete organization error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to delete organization",
-      error: error.message,
-    });
   }
-});
+);
 
 // @route   GET /api2/organizations/:subdomain/stats
 // @desc    Get organization statistics
@@ -358,7 +449,8 @@ router.get("/:subdomain/stats", authenticate, async (req, res) => {
     }
 
     // Get real-time stats from org database
-    const userCollection = req.db.collection("users") || req.db.collection("User");
+    const userCollection =
+      req.db.collection("users") || req.db.collection("User");
     const comicCollection = req.db.collection("Comic");
     const chapterCollection = req.db.collection("Chapter");
 
@@ -390,4 +482,3 @@ router.get("/:subdomain/stats", authenticate, async (req, res) => {
 });
 
 module.exports = router;
-
