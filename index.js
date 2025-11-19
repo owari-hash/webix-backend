@@ -171,6 +171,7 @@ const authRoutes = require("./routes/auth");
 const webtoonRoutes = require("./routes/webtoon");
 const uploadRoutes = require("./routes/upload");
 const usersRoutes = require("./routes/users");
+const commentsRoutes = require("./routes/comments");
 const { authenticate, authorize } = require("./middleware/auth");
 
 // Serve uploaded files as static
@@ -181,6 +182,7 @@ app.use("/api2/auth", authRoutes);
 app.use("/api2/webtoon", webtoonRoutes);
 app.use("/api2/upload", uploadRoutes);
 app.use("/api2/users", usersRoutes);
+app.use("/api2/comments", commentsRoutes);
 
 // Welcome route - shows subdomain and database separation
 app.get("/", (req, res) => {

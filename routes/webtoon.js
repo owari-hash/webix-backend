@@ -175,13 +175,27 @@ router.delete("/comic/:id", authenticate, async (req, res) => {
 
     // Also delete all chapters of this comic
     const chapterCollection = req.db.collection("Chapter");
+    const chapters = await chapterCollection
+      .find({ comicId: new ObjectId(req.params.id) })
+      .toArray();
+    const chapterIds = chapters.map((ch) => ch._id);
+
     await chapterCollection.deleteMany({
       comicId: new ObjectId(req.params.id),
     });
 
+    // Delete all comments on this comic and its chapters
+    const commentCollection = req.db.collection("Comment");
+    await commentCollection.deleteMany({
+      $or: [
+        { comicId: new ObjectId(req.params.id) },
+        { chapterId: { $in: chapterIds } },
+      ],
+    });
+
     res.json({
       success: true,
-      message: "Comic and its chapters deleted successfully",
+      message: "Comic, chapters, and comments deleted successfully",
     });
   } catch (error) {
     console.error("Delete comic error:", error);
@@ -470,9 +484,15 @@ router.delete("/chapter/:id", authenticate, async (req, res) => {
       });
     }
 
+    // Delete all comments on this chapter
+    const commentCollection = req.db.collection("Comment");
+    await commentCollection.deleteMany({
+      chapterId: new ObjectId(req.params.id),
+    });
+
     res.json({
       success: true,
-      message: "Chapter deleted successfully",
+      message: "Chapter and its comments deleted successfully",
     });
   } catch (error) {
     console.error("Delete chapter error:", error);
