@@ -9,17 +9,15 @@ const port = process.env.PORT || 3001;
 // MongoDB connection pool - stores connections for each subdomain
 const dbConnections = {};
 
-// Subdomain to database name mapping
-// const subdomainToDb = {
-//   udirdlaga: "webix-udirdlaga",
-//   goytest: "webix_goytest",
-//   test: "webix-test", // test.anzaidev.fun -> webix-test database
-//   zevtabs: "webix_zevtabs", // zevtabs.anzaidev.fun -> webix_zevtabs database
-//   dddd: "webix-dddd", // dddd.anzaidev.fun -> webix-dddd database
-//   ssss: "webix-ssss", // ssss.anzaidev.fun -> webix-ssss database
-//   // Add more subdomains as needed
-//   // subdomain: "database-name"
-// };
+// Optional: Subdomain to database name mapping (for custom database names)
+// If not provided, system will auto-detect using webix-{subdomain} pattern
+const subdomainToDb = process.env.SUBDOMAIN_DB_MAPPING
+  ? JSON.parse(process.env.SUBDOMAIN_DB_MAPPING)
+  : {
+      // Example mappings (can be overridden via environment variable)
+      // udirdlaga: "webix-udirdlaga",
+      // goytest: "webix_goytest",
+    };
 
 // MongoDB base URI (without database name)
 const MONGODB_BASE_URI = process.env.MONGODB_URI || "mongodb://localhost:27017";
@@ -58,7 +56,7 @@ app.use(async (req, res, next) => {
 
     // Check if subdomain is localhost
     const isLocalhost = subdomain === "localhost" || subdomain === "127.0.0.1";
-    const isMapped = subdomainToDb.hasOwnProperty(subdomain);
+    const isMapped = subdomainToDb && subdomainToDb.hasOwnProperty(subdomain);
 
     // Get database name: use mapping if exists, otherwise auto-detect
     let dbName;
@@ -66,10 +64,11 @@ app.use(async (req, res, next) => {
       // Use mapped database name
       dbName = subdomainToDb[subdomain];
     } else if (isLocalhost) {
-      // Default to 'udirdlaga' for localhost
-      dbName = subdomainToDb["udirdlaga"];
+      // For localhost, try default database or use webix-localhost pattern
+      dbName = process.env.DEFAULT_DATABASE || "webix-localhost";
     } else {
-      // Auto-detect: ONLY use webix-{subdomain} IF IT EXISTS
+      // Auto-detect: Try webix-{subdomain} or webix_{subdomain} pattern
+      // First try with hyphen, then underscore
       dbName = `webix-${subdomain}`;
 
       // STRICT CHECK: Database MUST exist in MongoDB
@@ -108,7 +107,19 @@ app.use(async (req, res, next) => {
           )
           .map((db) => db.name);
 
+        // Check if database exists (try both hyphen and underscore patterns)
         dbExists = dbListResult.databases.some((db) => db.name === dbName);
+
+        // If not found with hyphen, try underscore pattern
+        if (!dbExists && !isLocalhost && !isMapped) {
+          const dbNameUnderscore = `webix_${subdomain}`;
+          dbExists = dbListResult.databases.some(
+            (db) => db.name === dbNameUnderscore
+          );
+          if (dbExists) {
+            dbName = dbNameUnderscore;
+          }
+        }
       } catch (checkError) {
         console.error("Database check error:", checkError);
         // If we can't check, BLOCK access
@@ -685,11 +696,20 @@ const server = app.listen(port, () => {
   console.log(
     `🌐 Frontend URL: ${process.env.FRONTEND_URL || "http://localhost:8002"}`
   );
-  console.log(`\n📝 Available subdomains:`);
-  Object.entries(subdomainToDb).forEach(([subdomain, db]) => {
-    console.log(`   ${subdomain} -> ${db}`);
-  });
-  console.log(`\n✨ Test subdomain: test.anzaidev.fun -> webix-test database`);
+  console.log(`\n📝 Subdomain mapping:`);
+  if (subdomainToDb && Object.keys(subdomainToDb).length > 0) {
+    Object.entries(subdomainToDb).forEach(([subdomain, db]) => {
+      console.log(`   ${subdomain} -> ${db}`);
+    });
+  } else {
+    console.log(`   Using dynamic auto-detection: webix-{subdomain}`);
+    if (process.env.DEFAULT_DATABASE) {
+      console.log(
+        `   Default database (localhost): ${process.env.DEFAULT_DATABASE}`
+      );
+    }
+  }
+  console.log(`\n✨ Dynamic subdomain detection enabled`);
   console.log(`\n📋 Available Endpoints:`);
   console.log(`\n🔐 Authentication:`);
   console.log(`   POST /api2/auth/register - Register new user`);
