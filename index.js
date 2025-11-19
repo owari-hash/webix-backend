@@ -653,6 +653,29 @@ app.get("/api2/test-separation", async (req, res) => {
   }
 });
 
+// 404 handler - must be after all routes
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    message: "Route not found",
+    path: req.path,
+    method: req.method,
+    hint: "Check the available endpoints in the server logs",
+  });
+});
+
+// Global error handler - must be last
+app.use((err, req, res, next) => {
+  console.error("Global error handler:", err);
+  res.status(err.status || 500).json({
+    success: false,
+    message: err.message || "Internal server error",
+    error: process.env.NODE_ENV === "development" ? err.stack : undefined,
+    path: req.path,
+    method: req.method,
+  });
+});
+
 // Start server
 const server = app.listen(port, () => {
   console.log(`🚀 Server running on port ${port}`);

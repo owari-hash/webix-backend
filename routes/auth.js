@@ -1,6 +1,7 @@
 const express = require("express");
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
+const { authenticate } = require("../middleware/auth");
 
 const router = express.Router();
 
@@ -234,6 +235,105 @@ router.post("/logout", async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Logout failed",
+      error: error.message,
+    });
+  }
+});
+
+// @route   PATCH /api2/auth/profile
+// @desc    Update current user profile
+// @access  Private
+router.patch("/profile", authenticate, async (req, res) => {
+  try {
+    const { name, email, avatar, password } = req.body;
+    const { ObjectId } = require("mongodb");
+    const bcrypt = require("bcryptjs");
+
+    // Try both collection names for compatibility
+    const userId = new ObjectId(req.user.userId);
+    let collection = req.db.collection("users");
+    let user = await collection.findOne({ _id: userId });
+
+    // If not found in "users", try "User" (capital U)
+    if (!user) {
+      collection = req.db.collection("User");
+      user = await collection.findOne({ _id: userId });
+    }
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    const updateFields = { updatedAt: new Date() };
+
+    // Update name if provided
+    if (name) {
+      updateFields.name = name;
+    }
+
+    // Update email if provided (check for duplicates)
+    if (email) {
+      const emailLower = email.toLowerCase();
+      if (emailLower !== user.email) {
+        const existingUser = await collection.findOne({
+          email: emailLower,
+          _id: { $ne: userId },
+        });
+
+        if (existingUser) {
+          return res.status(400).json({
+            success: false,
+            message: "Email already exists",
+          });
+        }
+        updateFields.email = emailLower;
+      }
+    }
+
+    // Update avatar if provided
+    if (avatar !== undefined) {
+      updateFields.avatar = avatar;
+    }
+
+    // Update password if provided
+    if (password) {
+      if (password.length < 6) {
+        return res.status(400).json({
+          success: false,
+          message: "Password must be at least 6 characters",
+        });
+      }
+      const salt = await bcrypt.genSalt(10);
+      updateFields.password = await bcrypt.hash(password, salt);
+    }
+
+    // Update user
+    const result = await collection.findOneAndUpdate(
+      { _id: userId },
+      { $set: updateFields },
+      { returnDocument: "after", projection: { password: 0 } }
+    );
+
+    if (!result) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Profile updated successfully",
+      data: result,
+    });
+  } catch (error) {
+    console.error("Update profile error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to update profile",
       error: error.message,
     });
   }
