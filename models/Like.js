@@ -54,9 +54,18 @@ likeSchema.pre("validate", function (next) {
 });
 
 // Unique index to prevent duplicate likes/dislikes per user
-likeSchema.index({ user: 1, comicId: 1, type: 1 }, { unique: true, sparse: true });
-likeSchema.index({ user: 1, chapterId: 1, type: 1 }, { unique: true, sparse: true });
-likeSchema.index({ user: 1, commentId: 1, type: 1 }, { unique: true, sparse: true });
+likeSchema.index(
+  { user: 1, comicId: 1, type: 1 },
+  { unique: true, sparse: true }
+);
+likeSchema.index(
+  { user: 1, chapterId: 1, type: 1 },
+  { unique: true, sparse: true }
+);
+likeSchema.index(
+  { user: 1, commentId: 1, type: 1 },
+  { unique: true, sparse: true }
+);
 likeSchema.index({ subdomain: 1 });
 
 module.exports = mongoose.model("Like", likeSchema);
