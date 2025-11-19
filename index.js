@@ -204,7 +204,21 @@ const organizationsRoutes = require("./routes/organizations");
 const { authenticate, authorize } = require("./middleware/auth");
 
 // Serve uploaded files as static
-app.use("/uploads", express.static("uploads"));
+app.use(
+  "/uploads",
+  express.static("uploads", {
+    // Enable serving files from subdirectories
+    dotfiles: "ignore",
+    etag: true,
+    extensions: ["jpg", "jpeg", "png", "gif", "webp", "svg"],
+    index: false,
+    maxAge: "1d",
+    redirect: false,
+    setHeaders: function (res, path) {
+      res.set("x-timestamp", Date.now().toString());
+    },
+  })
+);
 
 // Mount routes
 app.use("/api2/auth", authRoutes);

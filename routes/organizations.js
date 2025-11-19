@@ -30,21 +30,21 @@ router.get("/logo", async (req, res) => {
       });
     }
 
-    // Build logo URL if logo exists
-    let logoUrl = null;
+    // Return logo - if it's base64, return directly; otherwise build URL
+    let logo = null;
     if (organization.logo) {
-      // If logo is a file path starting with /uploads/, build full URL
-      if (organization.logo.startsWith("/uploads/")) {
-        logoUrl = `${req.protocol}://${req.get("host")}${organization.logo}`;
+      if (organization.logo.startsWith("data:")) {
+        // Base64 data URL - return directly
+        logo = organization.logo;
+      } else if (organization.logo.startsWith("/uploads/")) {
+        // File path - build full URL
+        logo = `${req.protocol}://${req.get("host")}${organization.logo}`;
       } else if (organization.logo.startsWith("http")) {
         // Already a full URL
-        logoUrl = organization.logo;
-      } else if (organization.logo.startsWith("data:")) {
-        // Base64 data URL
-        logoUrl = organization.logo;
+        logo = organization.logo;
       } else {
         // Assume it's a filename in uploads/organizations/
-        logoUrl = `${req.protocol}://${req.get("host")}/uploads/organizations/${
+        logo = `${req.protocol}://${req.get("host")}/uploads/organizations/${
           organization.logo
         }`;
       }
@@ -53,8 +53,7 @@ router.get("/logo", async (req, res) => {
     res.json({
       success: true,
       data: {
-        logo: logoUrl,
-        logoPath: organization.logo,
+        logo: logo,
         name: organization.name,
         displayName: organization.displayName,
         subdomain: organization.subdomain,
@@ -90,21 +89,21 @@ router.get("/:subdomain/logo", async (req, res) => {
       });
     }
 
-    // Build logo URL if logo exists
-    let logoUrl = null;
+    // Return logo - if it's base64, return directly; otherwise build URL
+    let logo = null;
     if (organization.logo) {
-      // If logo is a file path starting with /uploads/, build full URL
-      if (organization.logo.startsWith("/uploads/")) {
-        logoUrl = `${req.protocol}://${req.get("host")}${organization.logo}`;
+      if (organization.logo.startsWith("data:")) {
+        // Base64 data URL - return directly
+        logo = organization.logo;
+      } else if (organization.logo.startsWith("/uploads/")) {
+        // File path - build full URL
+        logo = `${req.protocol}://${req.get("host")}${organization.logo}`;
       } else if (organization.logo.startsWith("http")) {
         // Already a full URL
-        logoUrl = organization.logo;
-      } else if (organization.logo.startsWith("data:")) {
-        // Base64 data URL
-        logoUrl = organization.logo;
+        logo = organization.logo;
       } else {
         // Assume it's a filename in uploads/organizations/
-        logoUrl = `${req.protocol}://${req.get("host")}/uploads/organizations/${
+        logo = `${req.protocol}://${req.get("host")}/uploads/organizations/${
           organization.logo
         }`;
       }
@@ -113,8 +112,7 @@ router.get("/:subdomain/logo", async (req, res) => {
     res.json({
       success: true,
       data: {
-        logo: logoUrl,
-        logoPath: organization.logo,
+        logo: logo,
         name: organization.name,
         displayName: organization.displayName,
         subdomain: organization.subdomain,
@@ -392,6 +390,7 @@ router.put("/:subdomain", authenticate, async (req, res) => {
       "businessType",
       "industry",
       "settings",
+      "logo", // Allow logo to be updated (can be base64 or file path)
     ];
 
     allowedFields.forEach((field) => {
