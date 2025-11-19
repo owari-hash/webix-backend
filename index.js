@@ -9,6 +9,10 @@ const port = process.env.PORT || 3001;
 // MongoDB connection pool - stores connections for each subdomain
 const dbConnections = {};
 
+// Central organization database connection (for Organization collection)
+let centralDbConnection = null;
+const CENTRAL_DB_NAME = process.env.CENTRAL_DB_NAME || "webix-udirdlaga";
+
 // Optional: Subdomain to database name mapping (for custom database names)
 // If not provided, system will auto-detect using webix-{subdomain} pattern
 const subdomainToDb = process.env.SUBDOMAIN_DB_MAPPING
@@ -161,10 +165,23 @@ app.use(async (req, res, next) => {
       );
     }
 
-    // Attach database connection to request object
-    req.db = dbConnections[dbName];
+    // Connect to central organization database (if not already connected)
+    if (!centralDbConnection) {
+      const centralDbUri = `${MONGODB_BASE_URI}/${CENTRAL_DB_NAME}`;
+      centralDbConnection = await mongoose.createConnection(centralDbUri, {
+        maxPoolSize: 10,
+        serverSelectionTimeoutMS: 5000,
+        socketTimeoutMS: 45000,
+      });
+      console.log(`✅ Connected to central database: ${CENTRAL_DB_NAME}`);
+    }
+
+    // Attach database connections to request object
+    req.db = dbConnections[dbName]; // Org-specific database
     req.dbName = dbName;
     req.subdomain = subdomain;
+    req.centralDb = centralDbConnection; // Central organization database
+    req.centralDbName = CENTRAL_DB_NAME;
 
     next();
   } catch (error) {
@@ -183,6 +200,7 @@ const webtoonRoutes = require("./routes/webtoon");
 const uploadRoutes = require("./routes/upload");
 const usersRoutes = require("./routes/users");
 const commentsRoutes = require("./routes/comments");
+const organizationsRoutes = require("./routes/organizations");
 const { authenticate, authorize } = require("./middleware/auth");
 
 // Serve uploaded files as static
@@ -194,6 +212,7 @@ app.use("/api2/webtoon", webtoonRoutes);
 app.use("/api2/upload", uploadRoutes);
 app.use("/api2/users", usersRoutes);
 app.use("/api2/comments", commentsRoutes);
+app.use("/api2/organizations", organizationsRoutes);
 
 // Welcome route - shows subdomain and database separation
 app.get("/", (req, res) => {
