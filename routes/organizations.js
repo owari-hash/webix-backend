@@ -30,10 +30,31 @@ router.get("/logo", async (req, res) => {
       });
     }
 
+    // Build logo URL if logo exists
+    let logoUrl = null;
+    if (organization.logo) {
+      // If logo is a file path starting with /uploads/, build full URL
+      if (organization.logo.startsWith("/uploads/")) {
+        logoUrl = `${req.protocol}://${req.get("host")}${organization.logo}`;
+      } else if (organization.logo.startsWith("http")) {
+        // Already a full URL
+        logoUrl = organization.logo;
+      } else if (organization.logo.startsWith("data:")) {
+        // Base64 data URL
+        logoUrl = organization.logo;
+      } else {
+        // Assume it's a filename in uploads/organizations/
+        logoUrl = `${req.protocol}://${req.get("host")}/uploads/organizations/${
+          organization.logo
+        }`;
+      }
+    }
+
     res.json({
       success: true,
       data: {
-        logo: organization.logo || null,
+        logo: logoUrl,
+        logoPath: organization.logo,
         name: organization.name,
         displayName: organization.displayName,
         subdomain: organization.subdomain,
@@ -69,10 +90,31 @@ router.get("/:subdomain/logo", async (req, res) => {
       });
     }
 
+    // Build logo URL if logo exists
+    let logoUrl = null;
+    if (organization.logo) {
+      // If logo is a file path starting with /uploads/, build full URL
+      if (organization.logo.startsWith("/uploads/")) {
+        logoUrl = `${req.protocol}://${req.get("host")}${organization.logo}`;
+      } else if (organization.logo.startsWith("http")) {
+        // Already a full URL
+        logoUrl = organization.logo;
+      } else if (organization.logo.startsWith("data:")) {
+        // Base64 data URL
+        logoUrl = organization.logo;
+      } else {
+        // Assume it's a filename in uploads/organizations/
+        logoUrl = `${req.protocol}://${req.get("host")}/uploads/organizations/${
+          organization.logo
+        }`;
+      }
+    }
+
     res.json({
       success: true,
       data: {
-        logo: organization.logo || null,
+        logo: logoUrl,
+        logoPath: organization.logo,
         name: organization.name,
         displayName: organization.displayName,
         subdomain: organization.subdomain,
