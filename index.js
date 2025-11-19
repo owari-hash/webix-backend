@@ -10,16 +10,16 @@ const port = process.env.PORT || 3001;
 const dbConnections = {};
 
 // Subdomain to database name mapping
-const subdomainToDb = {
-  udirdlaga: "webix-udirdlaga",
-  goytest: "webix_goytest",
-  test: "webix-test", // test.anzaidev.fun -> webix-test database
-  zevtabs: "webix_zevtabs", // zevtabs.anzaidev.fun -> webix_zevtabs database
-  dddd: "webix-dddd", // dddd.anzaidev.fun -> webix-dddd database
-  ssss: "webix-ssss", // ssss.anzaidev.fun -> webix-ssss database
-  // Add more subdomains as needed
-  // subdomain: "database-name"
-};
+// const subdomainToDb = {
+//   udirdlaga: "webix-udirdlaga",
+//   goytest: "webix_goytest",
+//   test: "webix-test", // test.anzaidev.fun -> webix-test database
+//   zevtabs: "webix_zevtabs", // zevtabs.anzaidev.fun -> webix_zevtabs database
+//   dddd: "webix-dddd", // dddd.anzaidev.fun -> webix-dddd database
+//   ssss: "webix-ssss", // ssss.anzaidev.fun -> webix-ssss database
+//   // Add more subdomains as needed
+//   // subdomain: "database-name"
+// };
 
 // MongoDB base URI (without database name)
 const MONGODB_BASE_URI = process.env.MONGODB_URI || "mongodb://localhost:27017";
