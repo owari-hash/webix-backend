@@ -107,23 +107,53 @@ router.post("/login", async (req, res) => {
     // Get subdomain from request
     const subdomain = req.subdomain;
 
-    // Try to find user in the User collection (case-insensitive)
-    const collection = req.db.collection("User");
+    // Helper function to escape regex special characters
+    const escapeRegex = (str) => {
+      return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    };
 
     // Build query - support both email and username
     const query = {};
     if (email) {
-      query.email = { $regex: new RegExp(`^${email}$`, "i") };
+      // Escape special regex characters and use case-insensitive search
+      const escapedEmail = escapeRegex(email);
+      query.email = { $regex: new RegExp(`^${escapedEmail}$`, "i") };
     } else if (username) {
-      query.username = { $regex: new RegExp(`^${username}$`, "i") };
+      const escapedUsername = escapeRegex(username);
+      query.username = { $regex: new RegExp(`^${escapedUsername}$`, "i") };
     }
 
-    const user = await collection.findOne(query);
+    // Try to find user in both collections (User and users)
+    let user = null;
+    let collection = null;
+
+    // First try "User" collection
+    const UserCollection = req.db.collection("User");
+    user = await UserCollection.findOne(query);
+
+    if (user) {
+      collection = UserCollection;
+    } else {
+      // If not found, try "users" collection
+      const usersCollection = req.db.collection("users");
+      user = await usersCollection.findOne(query);
+      if (user) {
+        collection = usersCollection;
+      }
+    }
 
     if (!user) {
       return res.status(401).json({
         success: false,
         message: "Invalid credentials - user not found",
+      });
+    }
+
+    // Optional: Check subdomain if user has subdomain field
+    if (user.subdomain && user.subdomain !== subdomain) {
+      return res.status(401).json({
+        success: false,
+        message: "User not found for this subdomain",
       });
     }
 
