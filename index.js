@@ -95,9 +95,9 @@ app.use(async (req, res, next) => {
       // For localhost, try default database or use webix-localhost pattern
       dbName = process.env.DEFAULT_DATABASE || "webix-localhost";
     } else {
-      // Auto-detect: Try webix-{subdomain} or webix_{subdomain} pattern
-      // First try with hyphen, then underscore
-      dbName = `webix-${subdomain}`;
+      // Auto-detect: Try webix_{subdomain} first, then webix-{subdomain}
+      // Prefer underscore pattern which matches your existing DB
+      dbName = `webix_${subdomain}`;
 
       // OPTIMIZED: Check database existence with caching
       // Use one of the existing connections to get database list
@@ -181,7 +181,7 @@ app.use(async (req, res, next) => {
         }
       }
 
-      // BLOCK if database doesn't exist
+      // BLOCK if database doesn't exist 
       if (!dbExists) {
         return res.status(404).json({
           success: false,
