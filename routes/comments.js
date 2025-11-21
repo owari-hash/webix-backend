@@ -9,6 +9,7 @@ const router = express.Router();
 router.post("/comic/:comicId", authenticate, async (req, res) => {
   try {
     const { ObjectId } = require("mongodb");
+    const { deleteCachePattern } = require("../utils/redis");
     const { content } = req.body;
     const { comicId } = req.params;
 
@@ -55,6 +56,9 @@ router.post("/comic/:comicId", authenticate, async (req, res) => {
 
     const result = await commentCollection.insertOne(comment);
 
+    // Invalidate cache for this comic's comments
+    await deleteCachePattern(`comments:comic:${comicId}:*`);
+
     res.status(201).json({
       success: true,
       message: "Comment posted successfully",
@@ -79,6 +83,7 @@ router.post("/comic/:comicId", authenticate, async (req, res) => {
 router.post("/chapter/:chapterId", authenticate, async (req, res) => {
   try {
     const { ObjectId } = require("mongodb");
+    const { deleteCachePattern } = require("../utils/redis");
     const { content } = req.body;
     const { chapterId } = req.params;
 
@@ -124,6 +129,9 @@ router.post("/chapter/:chapterId", authenticate, async (req, res) => {
     };
 
     const result = await commentCollection.insertOne(comment);
+
+    // Invalidate cache for this chapter's comments
+    await deleteCachePattern(`comments:chapter:${chapterId}:*`);
 
     res.status(201).json({
       success: true,
@@ -297,34 +305,19 @@ async function fetchReplies(db, parentId, limit = 50, currentUserId = null) {
 }
 
 // @route   GET /api2/comments/comic/:comicId
-// @desc    Get all comments for a comic
+// @desc    Get all comments for a comic (OPTIMIZED with aggregation)
 // @access  Public
 router.get("/comic/:comicId", async (req, res) => {
   try {
     const { ObjectId } = require("mongodb");
     const { comicId } = req.params;
     const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 20;
+    const limit = Math.min(parseInt(req.query.limit) || 20, 100); // Max 100 per page
     const skip = (page - 1) * limit;
 
-    const commentCollection = req.db.collection("Comment");
-
-    // Get only top-level comments (no parentId) with pagination
-    const comments = await commentCollection
-      .find({
-        comicId: new ObjectId(comicId),
-        parentId: null, // Only top-level comments
-      })
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit)
-      .toArray();
-
-    // Get total count of top-level comments only
-    const total = await commentCollection.countDocuments({
-      comicId: new ObjectId(comicId),
-      parentId: null,
-    });
+    // Import optimized aggregation
+    const { buildCommentsAggregationPipeline, getCommentsCount } = require("../utils/commentAggregation");
+    const { getCache, setCache } = require("../utils/redis");
 
     // Get current user ID if authenticated (for like status)
     let currentUserId = null;
@@ -343,63 +336,51 @@ router.get("/comic/:comicId", async (req, res) => {
       }
     }
 
-    // Populate author information and fetch replies
-    const commentsWithAuthors = await Promise.all(
-      comments.map(async (comment) => {
-        const author = await populateAuthor(req.db, comment.author);
+    // Try cache first (only for non-authenticated users)
+    const cacheKey = `comments:comic:${comicId}:page:${page}:limit:${limit}`;
+    if (!currentUserId) {
+      const cached = await getCache(cacheKey);
+      if (cached) {
+        console.log(`✅ Cache HIT: ${cacheKey}`);
+        return res.json(cached);
+      }
+    }
 
-        // Fetch replies for this comment
-        const replies = await fetchReplies(
-          req.db,
-          comment._id,
-          50,
-          currentUserId
-        );
+    console.log(`❌ Cache MISS: ${cacheKey}`);
 
-        // Get reply count
-        const replyCount = await commentCollection.countDocuments({
-          parentId: comment._id,
-        });
+    const commentCollection = req.db.collection("Comment");
+    const resourceId = new ObjectId(comicId);
 
-        // Check if current user liked/disliked this comment
-        let isLiked = false;
-        let isDisliked = false;
-        if (currentUserId) {
-          const likeCollection = req.db.collection("Like");
-          const like = await likeCollection.findOne({
-            user: currentUserId,
-            commentId: comment._id,
-            type: "like",
-          });
-          const dislike = await likeCollection.findOne({
-            user: currentUserId,
-            commentId: comment._id,
-            type: "dislike",
-          });
-          isLiked = !!like;
-          isDisliked = !!dislike;
-        }
+    // Get total count
+    const total = await getCommentsCount(req.db, resourceId, 'comic');
 
-        return {
-          ...comment,
-          author,
-          replies,
-          replyCount,
-          isLiked,
-          isDisliked,
-        };
-      })
+    // Build and execute aggregation pipeline
+    const pipeline = buildCommentsAggregationPipeline(
+      resourceId,
+      'comic',
+      currentUserId,
+      skip,
+      limit
     );
 
-    res.json({
+    const comments = await commentCollection.aggregate(pipeline).toArray();
+
+    const response = {
       success: true,
-      count: commentsWithAuthors.length,
+      count: comments.length,
       total,
       page,
       limit,
       pages: Math.ceil(total / limit),
-      comments: commentsWithAuthors,
-    });
+      comments,
+    };
+
+    // Cache for 5 minutes (only for non-authenticated users)
+    if (!currentUserId) {
+      await setCache(cacheKey, response, 300);
+    }
+
+    res.json(response);
   } catch (error) {
     console.error("Get comments for comic error:", error);
     res.status(500).json({
@@ -411,34 +392,19 @@ router.get("/comic/:comicId", async (req, res) => {
 });
 
 // @route   GET /api2/comments/chapter/:chapterId
-// @desc    Get all comments for a chapter
+// @desc    Get all comments for a chapter (OPTIMIZED with aggregation)
 // @access  Public
 router.get("/chapter/:chapterId", async (req, res) => {
   try {
     const { ObjectId } = require("mongodb");
     const { chapterId } = req.params;
     const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 20;
+    const limit = Math.min(parseInt(req.query.limit) || 20, 100); // Max 100 per page
     const skip = (page - 1) * limit;
 
-    const commentCollection = req.db.collection("Comment");
-
-    // Get only top-level comments (no parentId) with pagination
-    const comments = await commentCollection
-      .find({
-        chapterId: new ObjectId(chapterId),
-        parentId: null, // Only top-level comments
-      })
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit)
-      .toArray();
-
-    // Get total count of top-level comments only
-    const total = await commentCollection.countDocuments({
-      chapterId: new ObjectId(chapterId),
-      parentId: null,
-    });
+    // Import optimized aggregation
+    const { buildCommentsAggregationPipeline, getCommentsCount } = require("../utils/commentAggregation");
+    const { getCache, setCache } = require("../utils/redis");
 
     // Get current user ID if authenticated (for like status)
     let currentUserId = null;
@@ -457,63 +423,51 @@ router.get("/chapter/:chapterId", async (req, res) => {
       }
     }
 
-    // Populate author information and fetch replies
-    const commentsWithAuthors = await Promise.all(
-      comments.map(async (comment) => {
-        const author = await populateAuthor(req.db, comment.author);
+    // Try cache first (only for non-authenticated users)
+    const cacheKey = `comments:chapter:${chapterId}:page:${page}:limit:${limit}`;
+    if (!currentUserId) {
+      const cached = await getCache(cacheKey);
+      if (cached) {
+        console.log(`✅ Cache HIT: ${cacheKey}`);
+        return res.json(cached);
+      }
+    }
 
-        // Fetch replies for this comment
-        const replies = await fetchReplies(
-          req.db,
-          comment._id,
-          50,
-          currentUserId
-        );
+    console.log(`❌ Cache MISS: ${cacheKey}`);
 
-        // Get reply count
-        const replyCount = await commentCollection.countDocuments({
-          parentId: comment._id,
-        });
+    const commentCollection = req.db.collection("Comment");
+    const resourceId = new ObjectId(chapterId);
 
-        // Check if current user liked/disliked this comment
-        let isLiked = false;
-        let isDisliked = false;
-        if (currentUserId) {
-          const likeCollection = req.db.collection("Like");
-          const like = await likeCollection.findOne({
-            user: currentUserId,
-            commentId: comment._id,
-            type: "like",
-          });
-          const dislike = await likeCollection.findOne({
-            user: currentUserId,
-            commentId: comment._id,
-            type: "dislike",
-          });
-          isLiked = !!like;
-          isDisliked = !!dislike;
-        }
+    // Get total count
+    const total = await getCommentsCount(req.db, resourceId, 'chapter');
 
-        return {
-          ...comment,
-          author,
-          replies,
-          replyCount,
-          isLiked,
-          isDisliked,
-        };
-      })
+    // Build and execute aggregation pipeline
+    const pipeline = buildCommentsAggregationPipeline(
+      resourceId,
+      'chapter',
+      currentUserId,
+      skip,
+      limit
     );
 
-    res.json({
+    const comments = await commentCollection.aggregate(pipeline).toArray();
+
+    const response = {
       success: true,
-      count: commentsWithAuthors.length,
+      count: comments.length,
       total,
       page,
       limit,
       pages: Math.ceil(total / limit),
-      comments: commentsWithAuthors,
-    });
+      comments,
+    };
+
+    // Cache for 5 minutes (only for non-authenticated users)
+    if (!currentUserId) {
+      await setCache(cacheKey, response, 300);
+    }
+
+    res.json(response);
   } catch (error) {
     console.error("Get comments for chapter error:", error);
     res.status(500).json({

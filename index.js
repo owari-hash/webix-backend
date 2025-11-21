@@ -2,12 +2,28 @@ require("dotenv").config();
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
+const compression = require("compression");
+
+// Import optimization utilities
+const { initRedis, closeRedis } = require("./utils/redis");
+const { metricsMiddleware, getMetrics } = require("./middleware/metrics");
+const { defaultLimiter } = require("./middleware/rateLimiter");
 
 const app = express();
 const port = process.env.PORT || 3001;
 
+// Initialize Redis on startup
+initRedis().catch((err) => {
+  console.warn("⚠️  Failed to initialize Redis:", err.message);
+  console.warn("⚠️  Server will continue without caching");
+});
+
 // MongoDB connection pool - stores connections for each subdomain
 const dbConnections = {};
+
+// Database existence cache (to avoid repeated admin queries)
+const dbExistenceCache = new Map();
+const DB_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 // Central organization database connection (for Organization collection)
 let centralDbConnection = null;
@@ -35,6 +51,14 @@ app.use(
     allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
+
+// Response compression (gzip) - reduces bandwidth by 60-80%
+app.use(compression());
+
+// Metrics collection middleware
+if (process.env.ENABLE_METRICS !== 'false') {
+  app.use(metricsMiddleware);
+}
 
 // Body parsing middleware - increased limits for large payloads
 app.use(express.json({ limit: "100mb" }));
@@ -75,65 +99,86 @@ app.use(async (req, res, next) => {
       // First try with hyphen, then underscore
       dbName = `webix-${subdomain}`;
 
-      // STRICT CHECK: Database MUST exist in MongoDB
+      // OPTIMIZED: Check database existence with caching
       // Use one of the existing connections to get database list
       let dbExists = false;
       let availableDbs = [];
 
-      try {
-        // Get an existing connection or create temporary one
-        let checkConn;
-        const existingDbNames = Object.keys(dbConnections);
+      // Check cache first
+      const cacheKey = `db_exists:${dbName}`;
+      const cached = dbExistenceCache.get(cacheKey);
+      
+      if (cached && Date.now() - cached.timestamp < DB_CACHE_TTL) {
+        // Use cached result
+        dbExists = cached.exists;
+        availableDbs = cached.availableDbs || [];
+        console.log(`✅ Cache HIT: Database existence check for ${dbName}`);
+      } else {
+        // Cache miss - query MongoDB
+        console.log(`❌ Cache MISS: Checking database existence for ${dbName}`);
+        
+        try {
+          // Get an existing connection or create temporary one
+          let checkConn;
+          const existingDbNames = Object.keys(dbConnections);
 
-        if (existingDbNames.length > 0) {
-          // Use an existing connection
-          checkConn = dbConnections[existingDbNames[0]];
-        } else {
-          // Create a temporary connection
-          checkConn = await mongoose.createConnection(
-            `${MONGODB_BASE_URI}/admin`
-          );
-        }
-
-        // List all databases
-        const client = checkConn.getClient();
-        const adminDb = client.db("admin");
-        const dbListResult = await adminDb.admin().listDatabases();
-
-        // Close temporary connection if we created one
-        if (existingDbNames.length === 0) {
-          await checkConn.close();
-        }
-
-        availableDbs = dbListResult.databases
-          .filter(
-            (db) => db.name.startsWith("webix-") || db.name.startsWith("webix_")
-          )
-          .map((db) => db.name);
-
-        // Check if database exists (try both hyphen and underscore patterns)
-        dbExists = dbListResult.databases.some((db) => db.name === dbName);
-
-        // If not found with hyphen, try underscore pattern
-        if (!dbExists && !isLocalhost && !isMapped) {
-          const dbNameUnderscore = `webix_${subdomain}`;
-          dbExists = dbListResult.databases.some(
-            (db) => db.name === dbNameUnderscore
-          );
-          if (dbExists) {
-            dbName = dbNameUnderscore;
+          if (existingDbNames.length > 0) {
+            // Use an existing connection
+            checkConn = dbConnections[existingDbNames[0]];
+          } else {
+            // Create a temporary connection
+            checkConn = await mongoose.createConnection(
+              `${MONGODB_BASE_URI}/admin`
+            );
           }
+
+          // List all databases
+          const client = checkConn.getClient();
+          const adminDb = client.db("admin");
+          const dbListResult = await adminDb.admin().listDatabases();
+
+          // Close temporary connection if we created one
+          if (existingDbNames.length === 0) {
+            await checkConn.close();
+          }
+
+          availableDbs = dbListResult.databases
+            .filter(
+              (db) => db.name.startsWith("webix-") || db.name.startsWith("webix_")
+            )
+            .map((db) => db.name);
+
+          // Check if database exists (try both hyphen and underscore patterns)
+          dbExists = dbListResult.databases.some((db) => db.name === dbName);
+
+          // If not found with hyphen, try underscore pattern
+          if (!dbExists && !isLocalhost && !isMapped) {
+            const dbNameUnderscore = `webix_${subdomain}`;
+            dbExists = dbListResult.databases.some(
+              (db) => db.name === dbNameUnderscore
+            );
+            if (dbExists) {
+              dbName = dbNameUnderscore;
+            }
+          }
+          
+          // Cache the result
+          dbExistenceCache.set(cacheKey, {
+            exists: dbExists,
+            availableDbs: availableDbs,
+            timestamp: Date.now(),
+          });
+        } catch (checkError) {
+          console.error("Database check error:", checkError);
+          // If we can't check, BLOCK access
+          return res.status(500).json({
+            success: false,
+            message: "Cannot verify database existence",
+            error: checkError.message,
+            subdomain: subdomain,
+            database: dbName,
+          });
         }
-      } catch (checkError) {
-        console.error("Database check error:", checkError);
-        // If we can't check, BLOCK access
-        return res.status(500).json({
-          success: false,
-          message: "Cannot verify database existence",
-          error: checkError.message,
-          subdomain: subdomain,
-          database: dbName,
-        });
       }
 
       // BLOCK if database doesn't exist
@@ -154,9 +199,11 @@ app.use(async (req, res, next) => {
     if (!dbConnections[dbName]) {
       const dbUri = `${MONGODB_BASE_URI}/${dbName}`;
       const connection = await mongoose.createConnection(dbUri, {
-        maxPoolSize: 10,
+        maxPoolSize: 50, // OPTIMIZED: Increased from 10 to 50 for better concurrency
+        minPoolSize: 5,  // Maintain minimum connections
         serverSelectionTimeoutMS: 5000,
         socketTimeoutMS: 45000,
+        maxIdleTimeMS: 30000, // Close idle connections after 30s
       });
 
       dbConnections[dbName] = connection;
@@ -169,9 +216,11 @@ app.use(async (req, res, next) => {
     if (!centralDbConnection) {
       const centralDbUri = `${MONGODB_BASE_URI}/${CENTRAL_DB_NAME}`;
       centralDbConnection = await mongoose.createConnection(centralDbUri, {
-        maxPoolSize: 10,
+        maxPoolSize: 50, // OPTIMIZED: Increased from 10 to 50
+        minPoolSize: 5,
         serverSelectionTimeoutMS: 5000,
         socketTimeoutMS: 45000,
+        maxIdleTimeMS: 30000,
       });
       console.log(`✅ Connected to central database: ${CENTRAL_DB_NAME}`);
     }
@@ -202,6 +251,7 @@ const usersRoutes = require("./routes/users");
 const commentsRoutes = require("./routes/comments");
 const organizationsRoutes = require("./routes/organizations");
 const { authenticate, authorize } = require("./middleware/auth");
+const { authLimiter, uploadLimiter, publicLimiter } = require("./middleware/rateLimiter");
 
 // Serve uploaded files as static
 app.use(
@@ -220,13 +270,24 @@ app.use(
   })
 );
 
-// Mount routes
-app.use("/api2/auth", authRoutes);
-app.use("/api2/webtoon", webtoonRoutes);
-app.use("/api2/upload", uploadRoutes);
-app.use("/api2/users", usersRoutes);
-app.use("/api2/comments", commentsRoutes);
-app.use("/api2/organizations", organizationsRoutes);
+// Metrics endpoint (no rate limiting for monitoring)
+app.get("/metrics", async (req, res) => {
+  try {
+    res.set("Content-Type", "text/plain");
+    const metrics = await getMetrics();
+    res.send(metrics);
+  } catch (error) {
+    res.status(500).send("Error generating metrics");
+  }
+});
+
+// Mount routes with appropriate rate limiting
+app.use("/api2/auth", authLimiter, authRoutes); // Strict: 5 req/15min
+app.use("/api2/webtoon", publicLimiter, webtoonRoutes); // Lenient: 200 req/15min
+app.use("/api2/upload", uploadLimiter, uploadRoutes); // Medium: 10 req/15min
+app.use("/api2/users", defaultLimiter, usersRoutes); // Default: 100 req/15min
+app.use("/api2/comments", publicLimiter, commentsRoutes); // Lenient: 200 req/15min
+app.use("/api2/organizations", publicLimiter, organizationsRoutes); // Lenient: 200 req/15min
 
 // Welcome route - shows subdomain and database separation
 app.get("/", (req, res) => {
@@ -799,3 +860,72 @@ const server = app.listen(port, () => {
 server.timeout = 300000; // 5 minutes in milliseconds
 server.keepAliveTimeout = 310000; // slightly longer than timeout
 server.headersTimeout = 320000; // slightly longer than keepAliveTimeout
+
+// Graceful shutdown handler
+process.on('SIGTERM', async () => {
+  console.log('\n⚠️  SIGTERM signal received: closing HTTP server');
+  
+  server.close(async () => {
+    console.log('✅ HTTP server closed');
+    
+    // Close Redis connection
+    await closeRedis();
+    
+    // Close all database connections
+    for (const [dbName, connection] of Object.entries(dbConnections)) {
+      try {
+        await connection.close();
+        console.log(`✅ Closed database connection: ${dbName}`);
+      } catch (error) {
+        console.error(`Error closing database ${dbName}:`, error.message);
+      }
+    }
+    
+    // Close central database connection
+    if (centralDbConnection) {
+      try {
+        await centralDbConnection.close();
+        console.log(`✅ Closed central database connection`);
+      } catch (error) {
+        console.error('Error closing central database:', error.message);
+      }
+    }
+    
+    console.log('✅ Graceful shutdown complete');
+    process.exit(0);
+  });
+});
+
+process.on('SIGINT', async () => {
+  console.log('\n⚠️  SIGINT signal received: closing HTTP server');
+  
+  server.close(async () => {
+    console.log('✅ HTTP server closed');
+    
+    // Close Redis connection
+    await closeRedis();
+    
+    // Close all database connections
+    for (const [dbName, connection] of Object.entries(dbConnections)) {
+      try {
+        await connection.close();
+        console.log(`✅ Closed database connection: ${dbName}`);
+      } catch (error) {
+        console.error(`Error closing database ${dbName}:`, error.message);
+      }
+    }
+    
+    // Close central database connection
+    if (centralDbConnection) {
+      try {
+        await centralDbConnection.close();
+        console.log(`✅ Closed central database connection`);
+      } catch (error) {
+        console.error('Error closing central database:', error.message);
+      }
+    }
+    
+    console.log('✅ Graceful shutdown complete');
+    process.exit(0);
+  });
+});
