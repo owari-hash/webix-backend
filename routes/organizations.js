@@ -446,6 +446,7 @@ router.put("/:subdomain", authenticate, async (req, res) => {
       "industry",
       "settings",
       "logo", // Allow logo to be updated (can be base64 or file path)
+      "bankAccount",
     ];
 
     allowedFields.forEach((field) => {
