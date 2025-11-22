@@ -247,6 +247,23 @@ app.use(async (req, res, next) => {
       try {
         const organizationsCollection =
           centralDbConnection.collection("organizations");
+        
+        // DEEP DEBUG: List all collections in central DB
+        try {
+            const collections = await centralDbConnection.db.listCollections().toArray();
+            console.log(`[License Check] Collections in ${CENTRAL_DB_NAME}:`, collections.map(c => c.name));
+            
+            // DEEP DEBUG: Dump one organization to see structure
+            const sampleOrg = await organizationsCollection.findOne({});
+            console.log(`[License Check] Sample Org:`, sampleOrg ? { _id: sampleOrg._id, subdomain: sampleOrg.subdomain } : "No orgs found");
+
+            // DEEP DEBUG: Count documents with this subdomain
+            const count = await organizationsCollection.countDocuments({ subdomain: subdomain });
+            console.log(`[License Check] Count for ${subdomain}: ${count}`);
+        } catch (debugErr) {
+            console.error("[License Check] Debug Error:", debugErr);
+        }
+
         const organization = await organizationsCollection.findOne({
           subdomain: subdomain,
         });
