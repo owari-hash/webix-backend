@@ -225,6 +225,46 @@ app.use(async (req, res, next) => {
       console.log(`✅ Connected to central database: ${CENTRAL_DB_NAME}`);
     }
 
+    // Check Organization License
+    // We use the central database to check the subscription status
+    if (subdomain && !isLocalhost && centralDbConnection) {
+      try {
+        const organizationsCollection =
+          centralDbConnection.collection("organizations");
+        const organization = await organizationsCollection.findOne({
+          subdomain: subdomain,
+        });
+
+        if (organization) {
+          const isLicenseActive =
+            organization.subscription &&
+            organization.subscription.status === "active" &&
+            (!organization.subscription.endDate ||
+              new Date(organization.subscription.endDate) > new Date());
+
+          if (!isLicenseActive) {
+            return res.status(403).json({
+              success: false,
+              message: "Organization license is expired or inactive",
+              code: "LICENSE_EXPIRED",
+              organization: {
+                name: organization.name,
+                displayName: organization.displayName,
+                contactEmail:
+                  organization.email && organization.email[0]
+                    ? organization.email[0]
+                    : null,
+              },
+            });
+          }
+        }
+      } catch (licenseError) {
+        console.error("License check error:", licenseError);
+        // We don't block on error, but log it. 
+        // Alternatively, we could block if strict license checking is required.
+      }
+    }
+
     // Attach database connections to request object
     req.db = dbConnections[dbName]; // Org-specific database
     req.dbName = dbName;
