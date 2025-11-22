@@ -331,6 +331,7 @@ const uploadRoutes = require("./routes/upload");
 const usersRoutes = require("./routes/users");
 const commentsRoutes = require("./routes/comments");
 const organizationsRoutes = require("./routes/organizations");
+const notificationsRoutes = require("./routes/notifications");
 const { authenticate, authorize } = require("./middleware/auth");
 const { authLimiter, uploadLimiter, publicLimiter } = require("./middleware/rateLimiter");
 
@@ -369,6 +370,7 @@ app.use("/api2/upload", uploadLimiter, uploadRoutes); // Medium: 10 req/15min
 app.use("/api2/users", defaultLimiter, usersRoutes); // Default: 100 req/15min
 app.use("/api2/comments", publicLimiter, commentsRoutes); // Lenient: 200 req/15min
 app.use("/api2/organizations", publicLimiter, organizationsRoutes); // Lenient: 200 req/15min
+app.use("/api2/notifications", defaultLimiter, notificationsRoutes); // Default: 100 req/15min
 
 // Welcome route - shows subdomain and database separation
 app.get("/", (req, res) => {
