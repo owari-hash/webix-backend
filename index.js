@@ -74,10 +74,18 @@ app.use((req, res, next) => {
 // Middleware to detect subdomain and connect to appropriate database
 app.use(async (req, res, next) => {
   try {
-    // Extract subdomain from host header
+    // Extract subdomain from host header or custom headers
     // Handles: test.anzaidev.fun, localhost:3001, 127.0.0.1:3001, etc.
     const host = req.get("host") || "";
     let subdomain = host.split(".")[0];
+
+    // Check for custom headers (useful for local development or proxies)
+    if (req.headers["x-original-host"]) {
+      const originalHost = req.headers["x-original-host"];
+      subdomain = originalHost.split(".")[0];
+    } else if (req.headers["x-tenant-subdomain"]) {
+      subdomain = req.headers["x-tenant-subdomain"];
+    }
 
     // Remove port if present (e.g., "localhost:3001" -> "localhost")
     subdomain = subdomain.split(":")[0];
@@ -227,7 +235,12 @@ app.use(async (req, res, next) => {
 
     // Check Organization License
     // We use the central database to check the subscription status
-    if (subdomain && !isLocalhost && centralDbConnection) {
+    // We check if subdomain exists and it's not a generic localhost access (unless headers provided)
+    const isGenericLocalhost = (subdomain === "localhost" || subdomain === "127.0.0.1") && 
+                              !req.headers["x-original-host"] && 
+                              !req.headers["x-tenant-subdomain"];
+
+    if (subdomain && !isGenericLocalhost && centralDbConnection) {
       try {
         const organizationsCollection =
           centralDbConnection.collection("organizations");
