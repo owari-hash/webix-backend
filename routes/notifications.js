@@ -28,6 +28,15 @@ router.get("/", authenticate, async (req, res) => {
           const diffTime = end.getTime() - now.getTime();
           const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
           
+          console.log('Notification Check:', {
+            role: req.user.role,
+            endDate: endDate,
+            endISO: end.toISOString(),
+            nowISO: now.toISOString(),
+            diffTime,
+            diffDays
+          });
+
           // Alert if expiring within 7 days or already expired
           if (diffDays <= 7) {
             notifications.push({
