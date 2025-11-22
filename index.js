@@ -240,6 +240,9 @@ app.use(async (req, res, next) => {
                               !req.headers["x-original-host"] && 
                               !req.headers["x-tenant-subdomain"];
 
+    // DEBUG LOGS
+    console.log(`[License Check] Subdomain: ${subdomain}, GenericLocalhost: ${isGenericLocalhost}, DB Connected: ${!!centralDbConnection}`);
+
     if (subdomain && !isGenericLocalhost && centralDbConnection) {
       try {
         const organizationsCollection =
@@ -248,14 +251,21 @@ app.use(async (req, res, next) => {
           subdomain: subdomain,
         });
 
+        console.log(`[License Check] Organization found: ${!!organization}`);
+
         if (organization) {
+          console.log(`[License Check] Subscription:`, organization.subscription);
+          
           const isLicenseActive =
             organization.subscription &&
             organization.subscription.status === "active" &&
             (!organization.subscription.endDate ||
               new Date(organization.subscription.endDate) > new Date());
 
+          console.log(`[License Check] Is Active: ${isLicenseActive}`);
+
           if (!isLicenseActive) {
+            console.log(`[License Check] BLOCKING ACCESS for ${subdomain}`);
             return res.status(403).json({
               success: false,
               message: "Organization license is expired or inactive",
