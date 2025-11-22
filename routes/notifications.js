@@ -7,6 +7,9 @@ const router = express.Router();
 // @access  Private
 router.get("/", authenticate, async (req, res) => {
   try {
+    console.log('Notification Route Hit');
+    console.log('User:', req.user);
+    
     const notifications = [];
     
     // 1. Check for License Expiration (Admin only)
@@ -29,11 +32,7 @@ router.get("/", authenticate, async (req, res) => {
           const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
           
           console.log('Notification Check:', {
-            role: req.user.role,
             endDate: endDate,
-            endISO: end.toISOString(),
-            nowISO: now.toISOString(),
-            diffTime,
             diffDays
           });
 
