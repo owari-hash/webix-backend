@@ -231,14 +231,41 @@ router.post("/login", async (req, res) => {
 // @route   GET /api2/auth/me
 // @desc    Get current user
 // @access  Private (requires auth middleware)
-router.get("/me", async (req, res) => {
+router.get("/me", authenticate, async (req, res) => {
   try {
-    // This would require auth middleware to be implemented
-    // For now, return a message
+    const { ObjectId } = require("mongodb");
+    const userId = new ObjectId(req.user.userId);
+    
+    // Get user from DB
+    let collection = req.db.collection("users");
+    let user = await collection.findOne({ _id: userId });
+
+    if (!user) {
+      collection = req.db.collection("User");
+      user = await collection.findOne({ _id: userId });
+    }
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
     res.status(200).json({
       success: true,
-      message: "Get current user endpoint (requires authentication middleware)",
-      hint: "Add Authorization: Bearer <token> header",
+      user: {
+        id: user._id,
+        name: user.firstName ? `${user.firstName} ${user.lastName}` : user.name,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+        status: user.status,
+        subdomain: req.subdomain,
+        avatar: user.avatar,
+      },
     });
   } catch (error) {
     console.error("Get user error:", error);

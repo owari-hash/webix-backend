@@ -522,4 +522,42 @@ router.get("/:subdomain/stats", authenticate, async (req, res) => {
   }
 });
 
+// @route   GET /api2/organizations/license
+// @desc    Get current organization license info
+// @access  Public (or Private if you want to restrict)
+router.get("/license", async (req, res) => {
+  try {
+    const subdomain = req.subdomain;
+    const organizationCollection = req.centralDb.collection("Organization");
+
+    const organization = await organizationCollection.findOne(
+      { subdomain },
+      { projection: { subscription: 1, name: 1, displayName: 1 } }
+    );
+
+    if (!organization) {
+      return res.status(404).json({
+        success: false,
+        message: "Organization not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        subscription: organization.subscription,
+        name: organization.name,
+        displayName: organization.displayName,
+      },
+    });
+  } catch (error) {
+    console.error("Get license info error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to get license info",
+      error: error.message,
+    });
+  }
+});
+
 module.exports = router;
