@@ -45,10 +45,37 @@ const MONGODB_BASE_URI = process.env.MONGODB_URI || "mongodb://localhost:27017";
 // CORS configuration for frontend
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL || "http://localhost:8002",
+    origin: function (origin, callback) {
+      // Allow requests with no origin (like mobile apps or curl requests)
+      if (!origin) return callback(null, true);
+      
+      const allowedOrigins = [
+        "http://localhost:8002",
+        "http://localhost:3000",
+        "https://anzaidev.fun",
+        "https://www.anzaidev.fun"
+      ];
+      
+      // Check if origin is in allowed list
+      if (allowedOrigins.indexOf(origin) !== -1) {
+        return callback(null, true);
+      }
+      
+      // Check for subdomains (localhost and production)
+      // Matches: http://*.localhost:8002, https://*.anzaidev.fun
+      if (origin.match(/^http:\/\/[a-zA-Z0-9-]+\.localhost:8002$/) || 
+          origin.match(/^https:\/\/[a-zA-Z0-9-]+\.anzaidev\.fun$/)) {
+        return callback(null, true);
+      }
+      
+      // For development, you might want to be more permissive or log blocked origins
+      console.log('Blocked by CORS:', origin);
+      const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
+      return callback(new Error(msg), false);
+    },
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Original-Host", "X-Tenant-Subdomain"],
   })
 );
 
