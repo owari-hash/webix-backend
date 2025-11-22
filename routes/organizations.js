@@ -2,6 +2,91 @@ const express = require("express");
 const { authenticate, authorize } = require("../middleware/auth");
 const router = express.Router();
 
+// @route   GET /api2/organizations/license
+// @desc    Get current organization license info
+// @access  Public (or Private if you want to restrict)
+router.get("/license", async (req, res) => {
+  try {
+    const subdomain = req.subdomain;
+    const organizationCollection = req.centralDb.collection("Organization");
+
+    const organization = await organizationCollection.findOne(
+      { subdomain },
+      { projection: { subscription: 1, name: 1, displayName: 1 } }
+    );
+
+    if (!organization) {
+      return res.status(404).json({
+        success: false,
+        message: "Organization not found",
+      });
+    }
+
+    // Calculate endDate if not present (default to 30 days from startDate)
+    let subscription = { ...organization.subscription };
+    if (!subscription.endDate && subscription.startDate) {
+      const startDate = new Date(subscription.startDate);
+      const endDate = new Date(startDate);
+      endDate.setDate(startDate.getDate() + 30);
+      subscription.endDate = endDate;
+    }
+
+    console.log('License Request - Subdomain:', subdomain);
+    console.log('License Request - Organization found:', organization ? 'Yes' : 'No');
+    if (organization) {
+      console.log('License Request - Subscription:', organization.subscription);
+    }
+
+    res.json({
+      success: true,
+      data: {
+        subscription: subscription,
+        name: organization.name,
+        displayName: organization.displayName,
+      },
+    });
+  } catch (error) {
+    console.error("Get license info error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to get license info",
+      error: error.message,
+    });
+  }
+});
+
+// @route   GET /api2/organizations/current
+// @desc    Get current organization (based on subdomain)
+// @access  Private
+router.get("/current", authenticate, async (req, res) => {
+  try {
+    const organizationCollection = req.centralDb.collection("Organization");
+
+    const organization = await organizationCollection.findOne({
+      subdomain: req.subdomain,
+    });
+
+    if (!organization) {
+      return res.status(404).json({
+        success: false,
+        message: "Organization not found for this subdomain",
+      });
+    }
+
+    res.json({
+      success: true,
+      data: organization,
+    });
+  } catch (error) {
+    console.error("Get current organization error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to get current organization",
+      error: error.message,
+    });
+  }
+});
+
 // @route   GET /api2/organizations/logo
 // @desc    Get organization logo by subdomain (Public - no auth required)
 // @access  Public
@@ -218,37 +303,7 @@ router.get("/:subdomain", authenticate, async (req, res) => {
   }
 });
 
-// @route   GET /api2/organizations/current
-// @desc    Get current organization (based on subdomain)
-// @access  Private
-router.get("/current", authenticate, async (req, res) => {
-  try {
-    const organizationCollection = req.centralDb.collection("Organization");
 
-    const organization = await organizationCollection.findOne({
-      subdomain: req.subdomain,
-    });
-
-    if (!organization) {
-      return res.status(404).json({
-        success: false,
-        message: "Organization not found for this subdomain",
-      });
-    }
-
-    res.json({
-      success: true,
-      data: organization,
-    });
-  } catch (error) {
-    console.error("Get current organization error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to get current organization",
-      error: error.message,
-    });
-  }
-});
 
 // @route   POST /api2/organizations
 // @desc    Create new organization (Admin only)
@@ -542,10 +597,25 @@ router.get("/license", async (req, res) => {
       });
     }
 
+    // Calculate endDate if not present (default to 30 days from startDate)
+    let subscription = { ...organization.subscription };
+    if (!subscription.endDate && subscription.startDate) {
+      const startDate = new Date(subscription.startDate);
+      const endDate = new Date(startDate);
+      endDate.setDate(startDate.getDate() + 30);
+      subscription.endDate = endDate;
+    }
+
+    console.log('License Request - Subdomain:', subdomain);
+    console.log('License Request - Organization found:', organization ? 'Yes' : 'No');
+    if (organization) {
+      console.log('License Request - Subscription:', organization.subscription);
+    }
+
     res.json({
       success: true,
       data: {
-        subscription: organization.subscription,
+        subscription: subscription,
         name: organization.name,
         displayName: organization.displayName,
       },
@@ -555,6 +625,38 @@ router.get("/license", async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to get license info",
+      error: error.message,
+    });
+  }
+});
+
+// @route   GET /api2/organizations/current
+// @desc    Get current organization (based on subdomain)
+// @access  Private
+router.get("/current", authenticate, async (req, res) => {
+  try {
+    const organizationCollection = req.centralDb.collection("Organization");
+
+    const organization = await organizationCollection.findOne({
+      subdomain: req.subdomain,
+    });
+
+    if (!organization) {
+      return res.status(404).json({
+        success: false,
+        message: "Organization not found for this subdomain",
+      });
+    }
+
+    res.json({
+      success: true,
+      data: organization,
+    });
+  } catch (error) {
+    console.error("Get current organization error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to get current organization",
       error: error.message,
     });
   }
