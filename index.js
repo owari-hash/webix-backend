@@ -240,49 +240,23 @@ app.use(async (req, res, next) => {
                               !req.headers["x-original-host"] && 
                               !req.headers["x-tenant-subdomain"];
 
-    // DEBUG LOGS
-    console.log(`[License Check] Subdomain: ${subdomain}, GenericLocalhost: ${isGenericLocalhost}, DB Connected: ${!!centralDbConnection}`);
-
     if (subdomain && !isGenericLocalhost && centralDbConnection) {
       try {
+        // NOTE: Collection name is "Organization" (singular, capitalized) in this DB
         const organizationsCollection =
-          centralDbConnection.collection("organizations");
-        
-        // DEEP DEBUG: List all collections in central DB
-        try {
-            const collections = await centralDbConnection.db.listCollections().toArray();
-            console.log(`[License Check] Collections in ${CENTRAL_DB_NAME}:`, collections.map(c => c.name));
-            
-            // DEEP DEBUG: Dump one organization to see structure
-            const sampleOrg = await organizationsCollection.findOne({});
-            console.log(`[License Check] Sample Org:`, sampleOrg ? { _id: sampleOrg._id, subdomain: sampleOrg.subdomain } : "No orgs found");
-
-            // DEEP DEBUG: Count documents with this subdomain
-            const count = await organizationsCollection.countDocuments({ subdomain: subdomain });
-            console.log(`[License Check] Count for ${subdomain}: ${count}`);
-        } catch (debugErr) {
-            console.error("[License Check] Debug Error:", debugErr);
-        }
-
+          centralDbConnection.collection("Organization");
         const organization = await organizationsCollection.findOne({
           subdomain: subdomain,
         });
 
-        console.log(`[License Check] Organization found: ${!!organization}`);
-
         if (organization) {
-          console.log(`[License Check] Subscription:`, organization.subscription);
-          
           const isLicenseActive =
             organization.subscription &&
             organization.subscription.status === "active" &&
             (!organization.subscription.endDate ||
               new Date(organization.subscription.endDate) > new Date());
 
-          console.log(`[License Check] Is Active: ${isLicenseActive}`);
-
           if (!isLicenseActive) {
-            console.log(`[License Check] BLOCKING ACCESS for ${subdomain}`);
             return res.status(403).json({
               success: false,
               message: "Organization license is expired or inactive",
