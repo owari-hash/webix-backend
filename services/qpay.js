@@ -403,7 +403,7 @@ class QpayService {
         response: error.response?.data,
         status: error.response?.status,
         statusText: error.response?.statusText,
-        requestData: endpoint === "/v2/invoice" ? config.data : undefined,
+        requestData: endpoint === "/v2/invoice" ? data : undefined,
       });
 
       const errorMessage =
