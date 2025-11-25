@@ -168,20 +168,42 @@ router.post("/invoice", authenticate, async (req, res) => {
         qpayInvoiceData
       );
 
+      // QPay API returns: id (invoice_id), qr_code, qr_image, invoice_status, etc.
+      const qpayInvoiceId = qpayResult.id || qpayResult.invoice_id;
+      const invoiceStatus = qpayResult.invoice_status || "OPEN";
+
+      // Map QPay status to our status
+      let status = "PENDING";
+      if (invoiceStatus === "PAID" || invoiceStatus === "paid") {
+        status = "PAID";
+      } else if (
+        invoiceStatus === "CANCELLED" ||
+        invoiceStatus === "cancelled"
+      ) {
+        status = "CANCELLED";
+      } else if (invoiceStatus === "OPEN" || invoiceStatus === "open") {
+        status = "PENDING";
+      }
+
       // Save successful invoice to tenant database
       invoiceDocument = {
-        invoice_id: qpayResult.invoice_id,
-        qpay_invoice_id: qpayResult.invoice_id,
+        invoice_id: qpayInvoiceId,
+        qpay_invoice_id: qpayInvoiceId,
         merchant_id: merchantId,
         amount: invoiceData.amount,
         currency: qpayInvoiceData.currency,
         description: qpayInvoiceData.description,
         sender_invoice_no: senderInvoiceNo,
-        qr_text: qpayResult.qr_text || null,
-        qr_image: qpayResult.qr_image || null,
-        qr_code: qpayResult.qr_code || null,
+        qr_text: qpayResult.qr_code || qpayResult.qr_text || null, // QR code text
+        qr_image: qpayResult.qr_image || null, // QR code image (base64)
+        qr_code: qpayResult.qr_code || null, // QR code data
+        qpay_url:
+          qpayResult.urls?.[0]?.link || qpayResult.urls?.[0]?.name || null, // QPay payment URL
+        invoice_status: invoiceStatus, // QPay status (OPEN, PAID, CANCELLED)
+        status: status, // Our mapped status
+        terminal_id: qpayResult.terminal_id || null,
+        legacy_id: qpayResult.legacy_id || null,
         callback_url: qpayInvoiceData.callback_url,
-        status: "PENDING", // PENDING, PAID, CANCELLED
         created_by: req.user._id || req.user.id,
         subdomain: subdomain,
         createdAt: new Date(),
