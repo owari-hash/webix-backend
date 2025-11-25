@@ -663,4 +663,158 @@ router.get("/current", authenticate, async (req, res) => {
   }
 });
 
+// @route   PUT /api2/organizations/:subdomain/qpay-settings
+// @desc    Update Qpay settings for organization
+// @access  Private/Admin or Organization Admin
+router.put("/:subdomain/qpay-settings", authenticate, async (req, res) => {
+  try {
+    const { subdomain } = req.params;
+    const { username, password, terminal_id, base_url } = req.body;
+    const organizationCollection = req.centralDb.collection("Organization");
+
+    const organization = await organizationCollection.findOne({ subdomain });
+    if (!organization) {
+      return res.status(404).json({
+        success: false,
+        message: "Organization not found",
+      });
+    }
+
+    // Check permissions
+    const isAdmin = req.user.role === "admin";
+    const isOrgAdmin =
+      organization.adminUsers &&
+      organization.adminUsers.some(
+        (adminId) => adminId.toString() === req.user.userId
+      );
+
+    if (!isAdmin && !isOrgAdmin) {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied",
+      });
+    }
+
+    // Validate required fields
+    if (!username || !password || !terminal_id) {
+      return res.status(400).json({
+        success: false,
+        message: "username, password, and terminal_id are required",
+      });
+    }
+
+    // Update Qpay settings
+    const qpaySettings = {
+      username,
+      password,
+      terminal_id,
+      ...(base_url && { base_url }),
+    };
+
+    // Initialize settings if it doesn't exist
+    if (!organization.settings) {
+      organization.settings = {};
+    }
+
+    await organizationCollection.updateOne(
+      { subdomain },
+      {
+        $set: {
+          "settings.qpay": qpaySettings,
+          updatedAt: new Date(),
+        },
+      }
+    );
+
+    const updated = await organizationCollection.findOne(
+      { subdomain },
+      { projection: { settings: 1 } }
+    );
+
+    res.json({
+      success: true,
+      message: "Qpay settings updated successfully",
+      data: {
+        qpay: updated.settings?.qpay,
+      },
+    });
+  } catch (error) {
+    console.error("Update Qpay settings error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to update Qpay settings",
+      error: error.message,
+    });
+  }
+});
+
+// @route   GET /api2/organizations/:subdomain/qpay-settings
+// @desc    Get Qpay settings for organization (without sensitive data)
+// @access  Private/Admin or Organization Admin
+router.get("/:subdomain/qpay-settings", authenticate, async (req, res) => {
+  try {
+    const { subdomain } = req.params;
+    const organizationCollection = req.centralDb.collection("Organization");
+
+    const organization = await organizationCollection.findOne(
+      { subdomain },
+      { projection: { settings: 1, adminUsers: 1 } }
+    );
+
+    if (!organization) {
+      return res.status(404).json({
+        success: false,
+        message: "Organization not found",
+      });
+    }
+
+    // Check permissions
+    const isAdmin = req.user.role === "admin";
+    const isOrgAdmin =
+      organization.adminUsers &&
+      organization.adminUsers.some(
+        (adminId) => adminId.toString() === req.user.userId
+      );
+
+    if (!isAdmin && !isOrgAdmin) {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied",
+      });
+    }
+
+    const qpaySettings = organization.settings?.qpay || null;
+
+    if (!qpaySettings) {
+      return res.json({
+        success: true,
+        message: "Qpay settings not configured",
+        data: { qpay: null },
+      });
+    }
+
+    // Return settings without password for security
+    res.json({
+      success: true,
+      message: "Qpay settings retrieved successfully",
+      data: {
+        qpay: {
+          username: qpaySettings.username,
+          terminal_id: qpaySettings.terminal_id,
+          base_url: qpaySettings.base_url,
+          // Don't return password
+          configured: true,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Get Qpay settings error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to get Qpay settings",
+      error: error.message,
+    });
+  }
+});
+
 module.exports = router;

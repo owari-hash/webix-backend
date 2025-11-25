@@ -48,34 +48,42 @@ app.use(
     origin: function (origin, callback) {
       // Allow requests with no origin (like mobile apps or curl requests)
       if (!origin) return callback(null, true);
-      
+
       const allowedOrigins = [
         "http://localhost:8002",
         "http://localhost:3000",
         "https://anzaidev.fun",
-        "https://www.anzaidev.fun"
+        "https://www.anzaidev.fun",
       ];
-      
+
       // Check if origin is in allowed list
       if (allowedOrigins.indexOf(origin) !== -1) {
         return callback(null, true);
       }
-      
+
       // Check for subdomains (localhost and production)
       // Matches: http://*.localhost:8002, https://*.anzaidev.fun
-      if (origin.match(/^http:\/\/[a-zA-Z0-9-]+\.localhost:8002$/) || 
-          origin.match(/^https:\/\/[a-zA-Z0-9-]+\.anzaidev\.fun$/)) {
+      if (
+        origin.match(/^http:\/\/[a-zA-Z0-9-]+\.localhost:8002$/) ||
+        origin.match(/^https:\/\/[a-zA-Z0-9-]+\.anzaidev\.fun$/)
+      ) {
         return callback(null, true);
       }
-      
+
       // For development, you might want to be more permissive or log blocked origins
-      console.log('Blocked by CORS:', origin);
-      const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
+      console.log("Blocked by CORS:", origin);
+      const msg =
+        "The CORS policy for this site does not allow access from the specified Origin.";
       return callback(new Error(msg), false);
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "X-Original-Host", "X-Tenant-Subdomain"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "X-Original-Host",
+      "X-Tenant-Subdomain",
+    ],
   })
 );
 
@@ -83,7 +91,7 @@ app.use(
 app.use(compression());
 
 // Metrics collection middleware
-if (process.env.ENABLE_METRICS !== 'false') {
+if (process.env.ENABLE_METRICS !== "false") {
   app.use(metricsMiddleware);
 }
 
@@ -142,7 +150,7 @@ app.use(async (req, res, next) => {
       // Check cache first
       const cacheKey = `db_exists:${dbName}`;
       const cached = dbExistenceCache.get(cacheKey);
-      
+
       if (cached && Date.now() - cached.timestamp < DB_CACHE_TTL) {
         // Use cached result
         dbExists = cached.exists;
@@ -151,7 +159,7 @@ app.use(async (req, res, next) => {
       } else {
         // Cache miss - query MongoDB
         console.log(`❌ Cache MISS: Checking database existence for ${dbName}`);
-        
+
         try {
           // Get an existing connection or create temporary one
           let checkConn;
@@ -179,7 +187,8 @@ app.use(async (req, res, next) => {
 
           availableDbs = dbListResult.databases
             .filter(
-              (db) => db.name.startsWith("webix-") || db.name.startsWith("webix_")
+              (db) =>
+                db.name.startsWith("webix-") || db.name.startsWith("webix_")
             )
             .map((db) => db.name);
 
@@ -196,7 +205,7 @@ app.use(async (req, res, next) => {
               dbName = dbNameUnderscore;
             }
           }
-          
+
           // Cache the result
           dbExistenceCache.set(cacheKey, {
             exists: dbExists,
@@ -216,7 +225,7 @@ app.use(async (req, res, next) => {
         }
       }
 
-      // BLOCK if database doesn't exist 
+      // BLOCK if database doesn't exist
       if (!dbExists) {
         return res.status(404).json({
           success: false,
@@ -235,7 +244,7 @@ app.use(async (req, res, next) => {
       const dbUri = `${MONGODB_BASE_URI}/${dbName}`;
       const connection = await mongoose.createConnection(dbUri, {
         maxPoolSize: 50, // OPTIMIZED: Increased from 10 to 50 for better concurrency
-        minPoolSize: 5,  // Maintain minimum connections
+        minPoolSize: 5, // Maintain minimum connections
         serverSelectionTimeoutMS: 5000,
         socketTimeoutMS: 45000,
         maxIdleTimeMS: 30000, // Close idle connections after 30s
@@ -263,9 +272,10 @@ app.use(async (req, res, next) => {
     // Check Organization License
     // We use the central database to check the subscription status
     // We check if subdomain exists and it's not a generic localhost access (unless headers provided)
-    const isGenericLocalhost = (subdomain === "localhost" || subdomain === "127.0.0.1") && 
-                              !req.headers["x-original-host"] && 
-                              !req.headers["x-tenant-subdomain"];
+    const isGenericLocalhost =
+      (subdomain === "localhost" || subdomain === "127.0.0.1") &&
+      !req.headers["x-original-host"] &&
+      !req.headers["x-tenant-subdomain"];
 
     if (subdomain && !isGenericLocalhost && centralDbConnection) {
       try {
@@ -301,7 +311,7 @@ app.use(async (req, res, next) => {
         }
       } catch (licenseError) {
         console.error("License check error:", licenseError);
-        // We don't block on error, but log it. 
+        // We don't block on error, but log it.
         // Alternatively, we could block if strict license checking is required.
       }
     }
@@ -332,8 +342,13 @@ const usersRoutes = require("./routes/users");
 const commentsRoutes = require("./routes/comments");
 const organizationsRoutes = require("./routes/organizations");
 const notificationsRoutes = require("./routes/notifications");
+const qpayRoutes = require("./routes/qpay");
 const { authenticate, authorize } = require("./middleware/auth");
-const { authLimiter, uploadLimiter, publicLimiter } = require("./middleware/rateLimiter");
+const {
+  authLimiter,
+  uploadLimiter,
+  publicLimiter,
+} = require("./middleware/rateLimiter");
 
 // Serve uploaded files as static
 app.use(
@@ -371,6 +386,7 @@ app.use("/api2/users", defaultLimiter, usersRoutes); // Default: 100 req/15min
 app.use("/api2/comments", publicLimiter, commentsRoutes); // Lenient: 200 req/15min
 app.use("/api2/organizations", publicLimiter, organizationsRoutes); // Lenient: 200 req/15min
 app.use("/api2/notifications", defaultLimiter, notificationsRoutes); // Default: 100 req/15min
+app.use("/api2/qpay", defaultLimiter, qpayRoutes); // Default: 100 req/15min
 
 // Welcome route - shows subdomain and database separation
 app.get("/", (req, res) => {
@@ -933,6 +949,19 @@ const server = app.listen(port, () => {
   console.log(`   GET  /api2/collection/:name - Get collection data`);
   console.log(`   POST /api2/collection/:name/insert - Insert test data`);
   console.log(`   GET  /api2/db-stats - Database statistics`);
+  console.log(`\n💳 Qpay Payment Integration (Organization-specific):`);
+  console.log(`   POST   /api2/qpay/invoice - Create invoice`);
+  console.log(`   GET    /api2/qpay/invoice/:id - Get invoice`);
+  console.log(`   DELETE /api2/qpay/invoice/:id - Cancel invoice`);
+  console.log(`   POST   /api2/qpay/payment/check - Check payment status`);
+  console.log(`\n⚙️  Qpay Settings Management:`);
+  console.log(
+    `   GET    /api2/organizations/:subdomain/qpay-settings - Get Qpay settings`
+  );
+  console.log(
+    `   PUT    /api2/organizations/:subdomain/qpay-settings - Update Qpay settings`
+  );
+  console.log(`   Note: Each organization has its own Qpay credentials`);
   console.log(`\n⚙️  Server Configuration:`);
   console.log(`   Body Size Limit: 100mb`);
   console.log(`   Request Timeout: 5 minutes`);
@@ -945,15 +974,15 @@ server.keepAliveTimeout = 310000; // slightly longer than timeout
 server.headersTimeout = 320000; // slightly longer than keepAliveTimeout
 
 // Graceful shutdown handler
-process.on('SIGTERM', async () => {
-  console.log('\n⚠️  SIGTERM signal received: closing HTTP server');
-  
+process.on("SIGTERM", async () => {
+  console.log("\n⚠️  SIGTERM signal received: closing HTTP server");
+
   server.close(async () => {
-    console.log('✅ HTTP server closed');
-    
+    console.log("✅ HTTP server closed");
+
     // Close Redis connection
     await closeRedis();
-    
+
     // Close all database connections
     for (const [dbName, connection] of Object.entries(dbConnections)) {
       try {
@@ -963,31 +992,31 @@ process.on('SIGTERM', async () => {
         console.error(`Error closing database ${dbName}:`, error.message);
       }
     }
-    
+
     // Close central database connection
     if (centralDbConnection) {
       try {
         await centralDbConnection.close();
         console.log(`✅ Closed central database connection`);
       } catch (error) {
-        console.error('Error closing central database:', error.message);
+        console.error("Error closing central database:", error.message);
       }
     }
-    
-    console.log('✅ Graceful shutdown complete');
+
+    console.log("✅ Graceful shutdown complete");
     process.exit(0);
   });
 });
 
-process.on('SIGINT', async () => {
-  console.log('\n⚠️  SIGINT signal received: closing HTTP server');
-  
+process.on("SIGINT", async () => {
+  console.log("\n⚠️  SIGINT signal received: closing HTTP server");
+
   server.close(async () => {
-    console.log('✅ HTTP server closed');
-    
+    console.log("✅ HTTP server closed");
+
     // Close Redis connection
     await closeRedis();
-    
+
     // Close all database connections
     for (const [dbName, connection] of Object.entries(dbConnections)) {
       try {
@@ -997,18 +1026,18 @@ process.on('SIGINT', async () => {
         console.error(`Error closing database ${dbName}:`, error.message);
       }
     }
-    
+
     // Close central database connection
     if (centralDbConnection) {
       try {
         await centralDbConnection.close();
         console.log(`✅ Closed central database connection`);
       } catch (error) {
-        console.error('Error closing central database:', error.message);
+        console.error("Error closing central database:", error.message);
       }
     }
-    
-    console.log('✅ Graceful shutdown complete');
+
+    console.log("✅ Graceful shutdown complete");
     process.exit(0);
   });
 });
