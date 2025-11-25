@@ -152,47 +152,102 @@ router.post("/invoice", authenticate, async (req, res) => {
       JSON.stringify(qpayInvoiceData, null, 2)
     );
 
-    // Create invoice via QPay API
-    const qpayResult = await qpayService.createInvoice(
-      centralDb,
-      subdomain,
-      qpayInvoiceData
-    );
+    // Generate invoice number before API call
+    const senderInvoiceNo =
+      invoiceData.sender_invoice_no ||
+      `INV-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
-    // Save invoice to tenant database
-    const invoiceDocument = {
-      invoice_id: qpayResult.invoice_id,
-      qpay_invoice_id: qpayResult.invoice_id,
-      merchant_id: merchantId,
-      amount: invoiceData.amount,
-      currency: qpayInvoiceData.currency,
-      description: qpayInvoiceData.description,
-      sender_invoice_no:
-        invoiceData.sender_invoice_no ||
-        `INV-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      qr_text: qpayResult.qr_text || null,
-      qr_image: qpayResult.qr_image || null,
-      qr_code: qpayResult.qr_code || null,
-      callback_url: qpayInvoiceData.callback_url,
-      status: "PENDING", // PENDING, PAID, CANCELLED
-      created_by: req.user._id || req.user.id,
-      subdomain: subdomain,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
+    let qpayResult = null;
+    let invoiceDocument = null;
 
-    // Save to invoices collection in tenant database
-    const invoicesCollection = tenantDb.db.collection("invoices");
-    await invoicesCollection.insertOne(invoiceDocument);
+    try {
+      // Create invoice via QPay API
+      qpayResult = await qpayService.createInvoice(
+        centralDb,
+        subdomain,
+        qpayInvoiceData
+      );
 
-    res.status(201).json({
-      success: true,
-      message: "Invoice created successfully",
-      data: {
-        ...qpayResult,
-        invoice: invoiceDocument,
-      },
-    });
+      // Save successful invoice to tenant database
+      invoiceDocument = {
+        invoice_id: qpayResult.invoice_id,
+        qpay_invoice_id: qpayResult.invoice_id,
+        merchant_id: merchantId,
+        amount: invoiceData.amount,
+        currency: qpayInvoiceData.currency,
+        description: qpayInvoiceData.description,
+        sender_invoice_no: senderInvoiceNo,
+        qr_text: qpayResult.qr_text || null,
+        qr_image: qpayResult.qr_image || null,
+        qr_code: qpayResult.qr_code || null,
+        callback_url: qpayInvoiceData.callback_url,
+        status: "PENDING", // PENDING, PAID, CANCELLED
+        created_by: req.user._id || req.user.id,
+        subdomain: subdomain,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      // Save to invoices collection in tenant database
+      const invoicesCollection = tenantDb.db.collection("invoices");
+      await invoicesCollection.insertOne(invoiceDocument);
+
+      res.status(201).json({
+        success: true,
+        message: "Invoice created successfully",
+        data: {
+          ...qpayResult,
+          invoice: invoiceDocument,
+        },
+      });
+    } catch (qpayError) {
+      console.error("QPay API error:", qpayError);
+
+      // Save failed invoice attempt to database for tracking
+      invoiceDocument = {
+        invoice_id: null, // No QPay invoice ID since creation failed
+        qpay_invoice_id: null,
+        merchant_id: merchantId,
+        amount: invoiceData.amount,
+        currency: qpayInvoiceData.currency,
+        description: qpayInvoiceData.description,
+        sender_invoice_no: senderInvoiceNo,
+        qr_text: null,
+        qr_image: null,
+        qr_code: null,
+        callback_url: qpayInvoiceData.callback_url,
+        status: "FAILED", // FAILED status for tracking
+        error: {
+          message: qpayError.message || "Failed to create invoice",
+          code: qpayError.response?.status || "UNKNOWN",
+          details: qpayError.response?.data || null,
+        },
+        created_by: req.user._id || req.user.id,
+        subdomain: subdomain,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      // Save failed invoice to database
+      try {
+        const invoicesCollection = tenantDb.db.collection("invoices");
+        await invoicesCollection.insertOne(invoiceDocument);
+        console.log("✅ Failed invoice saved to database for tracking");
+      } catch (dbError) {
+        console.error("❌ Failed to save invoice to database:", dbError);
+      }
+
+      // Return error response
+      res.status(500).json({
+        success: false,
+        message: qpayError.message || "Failed to create invoice",
+        error: {
+          code: qpayError.response?.status,
+          details: qpayError.response?.data,
+        },
+        invoice: invoiceDocument, // Return the saved invoice document
+      });
+    }
   } catch (error) {
     console.error("Create invoice error:", error);
     res.status(500).json({

@@ -312,9 +312,13 @@ class QpayService {
         throw new Error("No valid token available. Please authenticate first.");
       }
 
+      const fullUrl = `${settings.baseURL}${endpoint}`;
+      console.log(`🌐 QPay API Request: ${method} ${fullUrl}`);
+      console.log(`📋 Base URL: ${settings.baseURL}, Endpoint: ${endpoint}`);
+
       const config = {
         method,
-        url: `${settings.baseURL}${endpoint}`,
+        url: fullUrl,
         headers: {
           Authorization: `Bearer ${cached.token}`,
           "Content-Type": "application/json",
@@ -400,6 +404,9 @@ class QpayService {
 
       console.error(`❌ Qpay ${method} ${endpoint} error:`, {
         message: error.message,
+        url: fullUrl,
+        baseURL: settings.baseURL,
+        endpoint: endpoint,
         response: error.response?.data,
         status: error.response?.status,
         statusText: error.response?.statusText,
