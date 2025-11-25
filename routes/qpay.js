@@ -65,32 +65,52 @@ router.post("/invoice", authenticate, async (req, res) => {
         ? `${process.env.FRONTEND_URL}/api2/qpay/callback`
         : null);
 
-    // For sandbox/development: use a test callback URL if none provided
-    // In production, this should always be set
+    // QPay requires a valid, accessible HTTPS callback URL
+    // For sandbox testing, you MUST provide a real HTTPS URL
     if (!callbackUrl) {
-      const isSandbox = (process.env.QPAY_BASE_URL || "").includes("sandbox");
-      if (isSandbox) {
-        // Use a test callback URL for sandbox (QPay sandbox may accept this)
-        callbackUrl = "https://sandbox-quickqr.qpay.mn/callback";
-        console.warn(
-          "⚠️  Using default sandbox callback URL. For production, set QPAY_CALLBACK_URL environment variable."
-        );
-      } else {
-        return res.status(400).json({
-          success: false,
-          message:
-            "QPay callback URL is required. Set QPAY_CALLBACK_URL environment variable with a valid HTTPS URL.",
-          hint: "For localhost development, use ngrok: 'ngrok http 3001' then set QPAY_CALLBACK_URL=https://your-ngrok-url.ngrok.io/api2/qpay/callback",
-        });
-      }
+      return res.status(400).json({
+        success: false,
+        message: "QPay callback URL is required",
+        details: {
+          error:
+            "QPay API requires a valid HTTPS callback URL that is accessible from the internet",
+          solutions: [
+            {
+              method: "ngrok (Recommended for localhost)",
+              steps: [
+                "1. Install ngrok: npm install -g ngrok",
+                "2. Start ngrok: ngrok http 3001",
+                "3. Copy the HTTPS URL (e.g., https://abc123.ngrok.io)",
+                "4. Set environment variable: QPAY_CALLBACK_URL=https://abc123.ngrok.io/api2/qpay/callback",
+              ],
+            },
+            {
+              method: "webhook.site (Quick testing)",
+              steps: [
+                "1. Go to https://webhook.site",
+                "2. Copy your unique URL",
+                "3. Set environment variable: QPAY_CALLBACK_URL=<your-webhook-url>",
+              ],
+            },
+            {
+              method: "Production",
+              steps: [
+                "1. Deploy your backend with a public HTTPS URL",
+                "2. Set QPAY_CALLBACK_URL=https://your-domain.com/api2/qpay/callback",
+              ],
+            },
+          ],
+        },
+      });
     }
 
     // Prepare invoice data for QPay API
     // QPay API expects: merchant_id, amount, currency, description, callback_url
     // Optional: branch_code, customer_name, customer_logo, mcc_code, bank_accounts
+    // Note: For QuickQR, bank_accounts is typically not required, but included if provided
     const qpayInvoiceData = {
       merchant_id: merchantId,
-      amount: invoiceData.amount,
+      amount: Number(invoiceData.amount), // Ensure it's a number
       currency: invoiceData.currency || "MNT",
       // Description - QPay supports UTF-8, just limit length
       description:
@@ -102,16 +122,35 @@ router.post("/invoice", authenticate, async (req, res) => {
           .trim()
           .substring(0, 255) || "Invoice payment", // Limit to 255 chars
       callback_url: callbackUrl,
-      // Optional fields
+      // Optional fields - only include if provided
       ...(invoiceData.branch_code && { branch_code: invoiceData.branch_code }),
       ...(invoiceData.customer_name && {
         customer_name: invoiceData.customer_name,
       }),
-      ...(invoiceData.mcc_code && { mcc_code: invoiceData.mcc_code }),
-      ...(invoiceData.bank_accounts && {
-        bank_accounts: invoiceData.bank_accounts,
+      ...(invoiceData.customer_logo && {
+        customer_logo: invoiceData.customer_logo,
       }),
+      ...(invoiceData.mcc_code && { mcc_code: invoiceData.mcc_code }),
+      // Bank accounts - include if provided, otherwise use default from env or organization
+      bank_accounts:
+        invoiceData.bank_accounts &&
+        Array.isArray(invoiceData.bank_accounts) &&
+        invoiceData.bank_accounts.length > 0
+          ? invoiceData.bank_accounts
+          : [
+              {
+                account_bank_code: process.env.QPAY_BANK_CODE || "040000",
+                account_number: process.env.QPAY_ACCOUNT_NUMBER || "5039842709",
+                account_name: process.env.QPAY_ACCOUNT_NAME || "Отгонбилэг",
+                is_default: true,
+              },
+            ],
     };
+
+    console.log(
+      "📤 Sending invoice data to QPay:",
+      JSON.stringify(qpayInvoiceData, null, 2)
+    );
 
     // Create invoice via QPay API
     const qpayResult = await qpayService.createInvoice(
