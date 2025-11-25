@@ -55,6 +55,22 @@ router.post("/invoice", authenticate, async (req, res) => {
       });
     }
 
+    // Validate callback URL
+    const callbackUrl =
+      invoiceData.callback_url ||
+      process.env.QPAY_CALLBACK_URL ||
+      (process.env.FRONTEND_URL?.startsWith("https")
+        ? `${process.env.FRONTEND_URL}/api2/qpay/callback`
+        : null);
+
+    if (!callbackUrl) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "QPay callback URL is required. Set QPAY_CALLBACK_URL environment variable with a valid HTTPS URL (e.g., use ngrok for localhost: ngrok http 3001, then set QPAY_CALLBACK_URL=https://your-ngrok-url.ngrok.io/api2/qpay/callback)",
+      });
+    }
+
     // Prepare invoice data for QPay API
     // QPay API expects: merchant_id, amount, currency, description, callback_url
     // Optional: branch_code, customer_name, customer_logo, mcc_code, bank_accounts
@@ -62,15 +78,13 @@ router.post("/invoice", authenticate, async (req, res) => {
       merchant_id: merchantId,
       amount: invoiceData.amount,
       currency: invoiceData.currency || "MNT",
-      description:
+      // Sanitize description - limit length and ensure it's a valid string
+      description: (
         invoiceData.description ||
         invoiceData.invoice_description ||
-        "Invoice payment",
-      callback_url:
-        invoiceData.callback_url ||
-        `${
-          process.env.FRONTEND_URL || "http://localhost:8002"
-        }/payment/callback`,
+        "Invoice payment"
+      ).substring(0, 255), // Limit length
+      callback_url: callbackUrl,
       // Optional fields
       ...(invoiceData.branch_code && { branch_code: invoiceData.branch_code }),
       ...(invoiceData.customer_name && {
@@ -250,6 +264,46 @@ router.post("/payment/check", authenticate, async (req, res) => {
     res.status(500).json({
       success: false,
       message: error.message || "Failed to check payment status",
+    });
+  }
+});
+
+/**
+ * @route   POST /api2/qpay/callback
+ * @desc    QPay payment callback webhook (called by QPay when payment is made)
+ * @access  Public (QPay calls this endpoint)
+ */
+router.post("/callback", async (req, res) => {
+  try {
+    const callbackData = req.body;
+    const { invoice_id, payment_status, transaction_id } = callbackData;
+
+    console.log("🔔 QPay callback received:", {
+      invoice_id,
+      payment_status,
+      transaction_id,
+      data: callbackData,
+    });
+
+    // Find the invoice in tenant database
+    // Note: We need to search across all tenant databases or use a central invoice collection
+    // For now, we'll log and acknowledge the callback
+    // In production, you'd want to:
+    // 1. Find the invoice by invoice_id
+    // 2. Update the invoice status
+    // 3. Trigger any business logic (e.g., activate premium subscription)
+
+    // Acknowledge the callback
+    res.status(200).json({
+      success: true,
+      message: "Callback received",
+    });
+  } catch (error) {
+    console.error("QPay callback error:", error);
+    // Still acknowledge to prevent QPay from retrying
+    res.status(200).json({
+      success: false,
+      message: "Callback processed with errors",
     });
   }
 });
