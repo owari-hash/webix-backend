@@ -1,0 +1,430 @@
+{
+  "info": {
+    "_postman_id": "6f9bfbcf-a8e6-49b0-a3f8-ca7a5d32f822",
+    "name": "Qpay Quick Pay Doc Final",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "38623003"
+  },
+  "item": [
+    {
+      "name": "auth",
+      "item": [
+        {
+          "name": "token",
+          "request": {
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "password",
+                  "value": "123456",
+                  "type": "string"
+                },
+                {
+                  "key": "username",
+                  "value": "TEST_VENDOR_MERCHANT",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"terminal_id\": \"95000059\" // //required талбар\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{host_qpay_pprocess_v2}}/v2/auth/token",
+              "host": ["{{host_qpay_pprocess_v2}}"],
+              "path": ["v2", "auth", "token"]
+            },
+            "description": "Тус api-г ашиглах эрхийн токен авах хүсэлтийн жишээ."
+          },
+          "response": []
+        },
+        {
+          "name": "refresh",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiMjQyNDk4NTEtZWI0Ny00Zjk0LWExZTAtYmEyNzVhNmI1MTlmIiwic2Vzc2lvbl9pZCI6IklnZFkzdHhtckt2OVhZR2JGWUR6ZUhxS0NLem13QTlXIiwiaWF0IjoxNzExMzQyNDE4LCJleHAiOjM0MjI3NzEyMzZ9.Jy6oIejysyyOwqHNr2fdc9ba3VWrBZxvMADeS7QcvMU",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{host_qpay_pprocess_v2}}/v2/auth/refresh",
+              "host": ["{{host_qpay_pprocess_v2}}"],
+              "path": ["v2", "auth", "refresh"]
+            }
+          },
+          "response": []
+        }
+      ],
+      "description": "**ХАНДАХ ЭРХИЙН ХЭСЭГ**",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "packages": {},
+            "exec": [""]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "packages": {},
+            "exec": [""]
+          }
+        }
+      ]
+    },
+    {
+      "name": "merchant",
+      "item": [
+        {
+          "name": "create_company",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"owner_first_name\": \"a\", //required биш optional талбар\n    \"owner_last_name\": \"b\",    //required биш optional талбар\n    \"register_number\": \"9323472\",//required талбар\n    \"company_name\": \"TEST LLC\",  //required талбар\n    \"name\": \"MERCHANT12\",             //required талбар\n    \"name_eng\": \"MERCHANT12\",         //required биш optional талбар\n    \"mcc_code\": \"5311\",          //required талбар\n    \"city\": \"11000\",             //required талбар\n    \"district\": \"12000\",         //required талбар\n    \"address\": \"6 хороо 14-10\",  //required талбар\n    \"phone\": \"99112210\",         //required талбар\n    \"email\": \"admin@gmail.com\"   //required талбар\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{host_qpay_pprocess_v2}}/v2/merchant/company",
+              "host": ["{{host_qpay_pprocess_v2}}"],
+              "path": ["v2", "merchant", "company"]
+            },
+            "description": "Байгууллага төрөлтэй мерчант бүртгэх хүсэлтийн жишээ."
+          },
+          "response": []
+        },
+        {
+          "name": "update_company",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "//DEV\n/* {\n    \"owner_first_name\": \"\", //required биш optional талбар\n    \"owner_last_name\": \"\",    //required биш optional талбар\n    \"register_number\": \"5454551\",//required талбар\n    \"company_name\": \"TEST LLC1\",  //required талбар\n    \"name\": \"micro\",             //required талбар\n    \"name_eng\": \"micro\",         //required биш optional талбар\n    \"mcc_code\": \"5311\",          //required талбар\n    \"city\": \"11000\",             //required талбар\n    \"district\": \"12000\",         //required талбар\n    \"address\": \"6 хороо 14-10\",  //required талбар\n    \"phone\": \"99112210\",         //required талбар\n    \"email\": \"admin@gmail.com\"   //required талбар\n} */\n\n{\n    \"owner_first_name\": \"Олдох\",\n    \"owner_last_name\": \"Батжаргал\",\n    \"register_number\": \"5585511\",\n    \"name\": \"Улаанбаатар ариутгал\",\n    \"company_name\": \"Улаанбаатар ариутгал\",\n    \"owner_register_no\": \"АЮ90040172\",\n    \"mcc_code\": \"5169\",\n    \"city\": \"11000\",\n    \"district\": \"14000\",\n    \"address\": \"Юнион бюлдинг 15 давхар 1508 тоот\",\n    \"phone\": \"89111876\",\n    \"email\": \"oldokh.b@ubariutgal.mn\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{host_qpay_pprocess_v2}}/v2/merchant/company/4b169efe-e08b-4c58-bab3-ba4ee3c207d0",
+              "host": ["{{host_qpay_pprocess_v2}}"],
+              "path": [
+                "v2",
+                "merchant",
+                "company",
+                "4b169efe-e08b-4c58-bab3-ba4ee3c207d0"
+              ]
+            },
+            "description": "Байгууллагаар бүртгүүлсэн мерчантын мэдээллийг update хийх хүсэлтийн жишээ."
+          },
+          "response": []
+        },
+        {
+          "name": "create_person",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"register_number\": \"АМ05321712\", //required талбар\n    \"first_name\": \"Test\",\n    \"last_name\": \"user\",\n    \"name\": \"Н.Ганзориг\",\n    \"name_eng\": \"N.Ganzorig\",\n    \"business_name\": \"Test\",     //required талбар\n    // \"business_name_eng\": \"baraa zarna\", //required биш optional талбар\n    \"mcc_code\": \"5812\", //required талбар\n    \"city\": \"11000\", //required талбар\n    \"district\": \"17000\", //required талбар\n    \"address\": \"Монгол улс, УБ хот, ХУД, 11-р хороо, Зайсан 17023, Дүнжингарав 14, Зайсан хилл цогцолбор, гадна талбайн түргэн хоолны газар 3 тоот\",\n    \"phone\": \"99022052\",\n    \"email\": \"ganzo.galaxy@gmail.com\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{host_qpay_pprocess_v2}}/v2/merchant/person",
+              "host": ["{{host_qpay_pprocess_v2}}"],
+              "path": ["v2", "merchant", "person"]
+            },
+            "description": "Иргэнээр бүртгүүлсэн мерчантын мэдээллийг update хийх хүсэлтийн жишээ."
+          },
+          "response": []
+        },
+        {
+          "name": "update_person",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "// DEV\n/* {\n    \"register_number\": \"АМ05321712\", //required талбар\n    \"first_name\": \"User1\",\n    \"last_name\": \"user\",\n    \"name\": \"Н.Ганзориг\",\n    \"name_eng\": \"N.Ganzorig\",\n    \"business_name\": \"Test\",     //required талбар\n    // \"business_name_eng\": \"baraa zarna\", //required биш optional талбар\n    \"mcc_code\": \"5812\", //required талбар\n    \"city\": \"11000\", //required талбар\n    \"district\": \"17000\", //required талбар\n    \"address\": \"Монгол улс, УБ хот, ХУД, 11-р хороо, Зайсан 17023, Дүнжингарав 14, Зайсан хилл цогцолбор, гадна талбайн түргэн хоолны газар 3 тоот\",\n    \"phone\": \"99022052\",\n    \"email\": \"ganzo.galaxy@gmail.com\"\n} */\n{\n    \"register_number\": \"АЮ89060872\",\n    \"first_name\": \"Munkhsaikhan\",\n    \"last_name\": \"Chimedbazar\",\n    \"name\": \"Chimedbazar Munkhsaikhan\",\n    \"name_eng\": \"Chimedbazar Munkhsaikhan\",\n    \"business_name\": \"test\",\n    \"mcc_code\": \"5045\",\n    \"city\": \"11000\",\n    \"district\": \"13000\",\n    \"address\": \"Bayanzurkh 5th street 72-26\",\n    \"phone\": \"95450054\",\n    \"email\": \"business.mybot@gmail.com\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{host_qpay_pprocess_v2}}/v2/merchant/person/d1a77869-bd1f-4629-9f2e-41b99d38065d",
+              "host": ["{{host_qpay_pprocess_v2}}"],
+              "path": [
+                "v2",
+                "merchant",
+                "person",
+                "d1a77869-bd1f-4629-9f2e-41b99d38065d"
+              ]
+            },
+            "description": "Иргэнээр бүртгүүлсэн мерчантын мэдээллийг update хийх хүсэлтийн жишээ."
+          },
+          "response": []
+        },
+        {
+          "name": "get_district",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{host_qpay_pprocess_v2}}/v2/sumduureg/11000",
+              "host": ["{{host_qpay_pprocess_v2}}"],
+              "path": ["v2", "sumduureg", "11000"]
+            },
+            "description": "_Шинээр мерчантын үүсгэхэд тухайн мерчантын харьяалагдах хот, сум, дүүргийн кодны жагсаалт харах хүсэлтийн жишээ. Query params-аар тухайн дүүргийн \"code\"-ыг дамжуулах шаардлагатай._"
+          },
+          "response": []
+        },
+        {
+          "name": "get_aimag",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{host_qpay_pprocess_v2}}/v2/aimaghot",
+              "host": ["{{host_qpay_pprocess_v2}}"],
+              "path": ["v2", "aimaghot"]
+            },
+            "description": "_Шинээр мерчантын үүсгэхэд тухайн мерчантын харьяалагдах аймгуудын кодны жагсаалт харах хүсэлтийн жишээ._"
+          },
+          "response": []
+        },
+        {
+          "name": "remove",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{host_qpay_pprocess_v2}}/v2/merchant/97096156-12b7-40df-8733-cdab541b8a3d",
+              "host": ["{{host_qpay_pprocess_v2}}"],
+              "path": ["v2", "merchant", "97096156-12b7-40df-8733-cdab541b8a3d"]
+            },
+            "description": "Бүртгүүлсэн мерчантын бүртгэлийн устгах хүсэлтийн жишээ. _**Request**____-ийн_ _**body**____-оор дараах мэдээллүүдийг доорх байдлаар оруулах шаардлагатай._"
+          },
+          "response": []
+        },
+        {
+          "name": "list",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"offset\": {\n        \"page_number\": 1, //required талбар\n        \"page_limit\": 20 //required талбар\n    }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{host_qpay_pprocess_v2}}/v2/merchant/list",
+              "host": ["{{host_qpay_pprocess_v2}}"],
+              "path": ["v2", "merchant", "list"]
+            },
+            "description": "_Бүртгүүлсэн нийт мерчантын жагсаалтыг хуудасласан байдлаар авах хүсэлтийн жишээ._ _**Request**__\\-ийн_ _**body**__\\-оор хуудаслалт (pagination) мэдээллүүдийг доорх байдлаар оруулах шаардлагатай._"
+          },
+          "response": []
+        },
+        {
+          "name": "get merchant",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{host_qpay_pprocess_v2}}/v2/merchant/974b935d-be7c-4198-a005-f84c394945e7",
+              "host": ["{{host_qpay_pprocess_v2}}"],
+              "path": ["v2", "merchant", "974b935d-be7c-4198-a005-f84c394945e7"]
+            }
+          },
+          "response": []
+        }
+      ],
+      "description": "**МЕРЧАНТЫН ХЭСЭГ**",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [""]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [""]
+          }
+        }
+      ]
+    },
+    {
+      "name": "invoice",
+      "item": [
+        {
+          "name": "create",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"merchant_id\": \"78fd75dc-7d1f-4cb4-8c08-765a8d4fa499\",\n    \"branch_code\": \"BRANCH_001\", \n    \"amount\": 100,\n    \"currency\": \"MNT\",\n    \"customer_name\": \"baraa zarna\",\n    \"customer_logo\": \"\",\n    \"callback_url\": \"https://notify@test.mn/pay\",\n    \"description\": \"usnii tolbor\",\n    \"mcc_code\": \"5691\",\n    \"bank_accounts\": [\n        {\n            \"account_bank_code\": \"040000\",\n            \"account_number\": \"490000869\",\n            \"account_name\": \"test account2\",\n            \"is_default\": true\n        }\n    ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{host_qpay_pprocess_v2}}/v2/invoice",
+              "host": ["{{host_qpay_pprocess_v2}}"],
+              "path": ["v2", "invoice"]
+            },
+            "description": "_Нэхэмжлэх үүсгэх хүсэлтийн жишээ. Request-ийн body-оор тухайн мерчантын id болон бусад мэдээллүүдийг доорх байдлаар оруулах шаардлагатай._"
+          },
+          "response": []
+        },
+        {
+          "name": "get",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{host_qpay_pprocess_v2}}/v2/invoice/84efa8c0-cf3f-43c0-9bc8-71d9c50602a9",
+              "host": ["{{host_qpay_pprocess_v2}}"],
+              "path": ["v2", "invoice", "84efa8c0-cf3f-43c0-9bc8-71d9c50602a9"]
+            },
+            "description": "_Тухайн үүсгэсэн нэхэмжлэх мэдээллийг авах хүсэлтийн жишээ. Нэхэмжлэх үүсгэх хүсэлтийн жишээ. Query params-аар нэхэмжлэхийн \"id\"-г доорх байдлаар дамжуулах шаардлагатай._"
+          },
+          "response": []
+        },
+        {
+          "name": "cancel",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{host_qpay_pprocess_v2}}/v2/invoice/55bfb2ca-3517-4c9c-9427-45a2b5504746",
+              "host": ["{{host_qpay_pprocess_v2}}"],
+              "path": ["v2", "invoice", "55bfb2ca-3517-4c9c-9427-45a2b5504746"]
+            },
+            "description": "Тухайн үүсгэсэн нэхэмжлэхийг цуцлах хүсэлтийн жишээ.\n\nНэхэмжлэх үүсгэх хүсэлтийн жишээ. _Query params-аар нэхэмжлэхийн \"id\"-ыг доорх байдлаар дамжуулах шаардлагатай._"
+          },
+          "response": []
+        }
+      ],
+      "description": "ТӨЛБӨРИЙН НЭХЭМЖЛЭХ ҮҮСГЭХ ХЭСЭГ",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [""]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [""]
+          }
+        }
+      ]
+    },
+    {
+      "name": "payment",
+      "item": [
+        {
+          "name": "check",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"invoice_id\": \"55bfb2ca-3517-4c9c-9427-45a2b5504746\" //required талбар\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{host_qpay_pprocess_v2}}/v2/payment/check",
+              "host": ["{{host_qpay_pprocess_v2}}"],
+              "path": ["v2", "payment", "check"]
+            },
+            "description": "Тухайн нэхэмжлэх дагуу төлбөр төлөгдсөн эсэхийг лавлах хүсэлтийн жишээ.\n\n_Request-ийн body-оор тухайн нэхэмжлэхийн \"id\"-ыг доорх байдлаар оруулах шаардлагатай._"
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJjbGllbnRfaWQiOiIyYzY5NzJiMS0wZTljLTQ1MjMtODZjZi01YzgxMGZjY2U1MWMiLCJzZXNzaW9uX2lkIjoieUlOVV9ZcnFCUVpnMHR0WlhNTnpjd25aX0pfOFZRWXIiLCJ0ZXJtaW5hbF9pZCI6Ijk1MDAwMDU5IiwiaWF0IjoxNzU5MjE0NTIxLCJleHAiOjM1MTg1MTU0NDJ9.Pjc4fAoP1CdtonZmIsXSeBF1MF57WUFbGpWkFQjDU4I",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [""]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [""]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "host_qpay_pprocess_v2",
+      "value": "https://sandbox-quickqr.qpay.mn"
+    }
+  ]
+}

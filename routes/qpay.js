@@ -214,13 +214,27 @@ router.post("/invoice", authenticate, async (req, res) => {
       const invoicesCollection = tenantDb.db.collection("invoices");
       await invoicesCollection.insertOne(invoiceDocument);
 
+      // Prepare response data with proper mapping
+      const responseData = {
+        id: qpayInvoiceId,
+        invoice_id: qpayInvoiceId,
+        qr_code: qpayResult.qr_code || null,
+        qr_image: qpayResult.qr_image || null,
+        qr_text: qpayResult.qr_code || qpayResult.qr_text || null,
+        invoice_status: invoiceStatus,
+        amount: qpayResult.amount || invoiceData.amount,
+        currency: qpayInvoiceData.currency,
+        description: qpayInvoiceData.description,
+        terminal_id: qpayResult.terminal_id || null,
+        legacy_id: qpayResult.legacy_id || null,
+        urls: qpayResult.urls || [],
+        invoice: invoiceDocument,
+      };
+
       res.status(201).json({
         success: true,
         message: "Invoice created successfully",
-        data: {
-          ...qpayResult,
-          invoice: invoiceDocument,
-        },
+        data: responseData,
       });
     } catch (qpayError) {
       console.error("QPay API error:", {
