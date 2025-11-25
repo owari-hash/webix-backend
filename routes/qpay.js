@@ -55,20 +55,34 @@ router.post("/invoice", authenticate, async (req, res) => {
       });
     }
 
-    // Validate callback URL
-    const callbackUrl =
+    // Get callback URL - QPay requires a valid HTTPS URL
+    // For sandbox testing, you can use a placeholder HTTPS URL
+    // For production, use your actual callback endpoint
+    let callbackUrl =
       invoiceData.callback_url ||
       process.env.QPAY_CALLBACK_URL ||
       (process.env.FRONTEND_URL?.startsWith("https")
         ? `${process.env.FRONTEND_URL}/api2/qpay/callback`
         : null);
 
+    // For sandbox/development: use a test callback URL if none provided
+    // In production, this should always be set
     if (!callbackUrl) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "QPay callback URL is required. Set QPAY_CALLBACK_URL environment variable with a valid HTTPS URL (e.g., use ngrok for localhost: ngrok http 3001, then set QPAY_CALLBACK_URL=https://your-ngrok-url.ngrok.io/api2/qpay/callback)",
-      });
+      const isSandbox = (process.env.QPAY_BASE_URL || "").includes("sandbox");
+      if (isSandbox) {
+        // Use a test callback URL for sandbox (QPay sandbox may accept this)
+        callbackUrl = "https://sandbox-quickqr.qpay.mn/callback";
+        console.warn(
+          "⚠️  Using default sandbox callback URL. For production, set QPAY_CALLBACK_URL environment variable."
+        );
+      } else {
+        return res.status(400).json({
+          success: false,
+          message:
+            "QPay callback URL is required. Set QPAY_CALLBACK_URL environment variable with a valid HTTPS URL.",
+          hint: "For localhost development, use ngrok: 'ngrok http 3001' then set QPAY_CALLBACK_URL=https://your-ngrok-url.ngrok.io/api2/qpay/callback",
+        });
+      }
     }
 
     // Prepare invoice data for QPay API
