@@ -29,24 +29,43 @@ class QpayService {
         throw new Error(`Organization not found for subdomain: ${subdomain}`);
       }
 
-      // Get Qpay settings from organization.settings.qpay
-      const qpaySettings = organization.settings?.qpay || {};
+      // Get Qpay settings from organization.qpay (not organization.settings.qpay)
+      const qpay = organization.qpay || {};
 
-      if (
-        !qpaySettings.username ||
-        !qpaySettings.password ||
-        !qpaySettings.terminal_id
-      ) {
+      // Check if QPay merchant is registered
+      if (!qpay.khariltsagch || !qpay.khariltsagch.merchant_id) {
         throw new Error(
-          `Qpay settings not configured for organization: ${subdomain}. Please configure Qpay credentials in organization settings.`
+          `QPay merchant not registered for organization: ${subdomain}. Please register QPay merchant first.`
+        );
+      }
+
+      // Get terminal_id from credentials
+      const terminalId = qpay.credentials?.terminal_id;
+
+      if (!terminalId) {
+        throw new Error(
+          `QPay terminal_id not configured for organization: ${subdomain}. Please set QPay settings first.`
+        );
+      }
+
+      // Use global QPay credentials from env (as per webix-udirdlaga-back implementation)
+      const username = process.env.QPAY_USERNAME;
+      const password = process.env.QPAY_PASSWORD;
+
+      if (!username || !password) {
+        throw new Error(
+          `QPay credentials not configured. Set QPAY_USERNAME and QPAY_PASSWORD in environment variables.`
         );
       }
 
       return {
-        baseURL: qpaySettings.base_url || this.baseURL,
-        username: qpaySettings.username,
-        password: qpaySettings.password,
-        terminalId: qpaySettings.terminal_id,
+        baseURL: process.env.QPAY_BASE_URL || this.baseURL,
+        username,
+        password,
+        terminalId,
+        merchantId: qpay.khariltsagch.merchant_id,
+        // Include stored token if available
+        storedToken: qpay.token,
       };
     } catch (error) {
       console.error("Get organization Qpay settings error:", error);
@@ -66,36 +85,90 @@ class QpayService {
       const cached = this.tokenCache[subdomain];
       if (cached && cached.expiry && Date.now() < cached.expiry) {
         return {
+          access_token: cached.token,
           token: cached.token,
           expires_in: Math.floor((cached.expiry - Date.now()) / 1000),
         };
       }
 
-      // Get organization settings
+      // Get organization settings (includes stored token)
       const settings = await this.getOrganizationSettings(centralDb, subdomain);
+
+      // Check if stored token is still valid
+      if (
+        settings.storedToken &&
+        settings.storedToken.access_token &&
+        settings.storedToken.expires_at &&
+        new Date(settings.storedToken.expires_at) > new Date()
+      ) {
+        // Use stored token
+        const expiresIn = Math.floor(
+          (new Date(settings.storedToken.expires_at) - Date.now()) / 1000
+        );
+        this.tokenCache[subdomain] = {
+          token: settings.storedToken.access_token,
+          expiry: new Date(settings.storedToken.expires_at).getTime(),
+        };
+        return {
+          access_token: settings.storedToken.access_token,
+          token: settings.storedToken.access_token,
+          refresh_token: settings.storedToken.refresh_token,
+          expires_in: expiresIn,
+        };
+      }
+
+      // Get new token from QPay API
+      const authHeader = Buffer.from(
+        `${settings.username}:${settings.password}`
+      ).toString("base64");
 
       const response = await axios.post(
         `${settings.baseURL}/v2/auth/token`,
         { terminal_id: settings.terminalId },
         {
-          auth: {
-            username: settings.username,
-            password: settings.password,
-          },
           headers: {
+            Authorization: `Basic ${authHeader}`,
             "Content-Type": "application/json",
           },
         }
       );
 
-      if (response.data && response.data.token) {
+      if (response.data && response.data.access_token) {
         // Cache the token
         const expiresIn = response.data.expires_in || 3600;
+        const expiresAt = new Date(Date.now() + expiresIn * 1000);
+
         this.tokenCache[subdomain] = {
-          token: response.data.token,
-          expiry: Date.now() + expiresIn * 1000,
+          token: response.data.access_token,
+          expiry: expiresAt.getTime(),
         };
-        return response.data;
+
+        // Update stored token in database
+        try {
+          const organizationCollection = centralDb.collection("Organization");
+          await organizationCollection.updateOne(
+            { subdomain },
+            {
+              $set: {
+                "qpay.token": {
+                  access_token: response.data.access_token,
+                  refresh_token: response.data.refresh_token || null,
+                  expires_at: expiresAt,
+                },
+              },
+            }
+          );
+        } catch (updateError) {
+          console.error("Failed to update token in database:", updateError);
+          // Continue even if update fails
+        }
+
+        return {
+          access_token: response.data.access_token,
+          token: response.data.access_token,
+          refresh_token: response.data.refresh_token || null,
+          expires_in: expiresIn,
+        };
       }
 
       return response.data;
@@ -191,6 +264,10 @@ class QpayService {
 
       const settings = await this.getOrganizationSettings(centralDb, subdomain);
       const cached = this.tokenCache[subdomain];
+
+      if (!cached || !cached.token) {
+        throw new Error("No valid token available. Please authenticate first.");
+      }
 
       const config = {
         method,
