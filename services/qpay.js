@@ -81,9 +81,12 @@ class QpayService {
    */
   async getToken(centralDb, subdomain) {
     try {
+      console.log(`🔑 Getting QPay token for subdomain: ${subdomain}`);
+      
       // Check cache first
       const cached = this.tokenCache[subdomain];
       if (cached && cached.expiry && Date.now() < cached.expiry) {
+        console.log(`✅ Using cached token (expires in ${Math.floor((cached.expiry - Date.now()) / 1000)}s)`);
         return {
           access_token: cached.token,
           token: cached.token,
@@ -93,31 +96,46 @@ class QpayService {
 
       // Get organization settings (includes stored token)
       const settings = await this.getOrganizationSettings(centralDb, subdomain);
+      console.log(`📋 Organization settings retrieved. Terminal ID: ${settings.terminalId}, Merchant ID: ${settings.merchantId}`);
 
       // Check if stored token is still valid
-      if (
-        settings.storedToken &&
-        settings.storedToken.access_token &&
-        settings.storedToken.expires_at &&
-        new Date(settings.storedToken.expires_at) > new Date()
-      ) {
-        // Use stored token
-        const expiresIn = Math.floor(
-          (new Date(settings.storedToken.expires_at) - Date.now()) / 1000
-        );
-        this.tokenCache[subdomain] = {
-          token: settings.storedToken.access_token,
-          expiry: new Date(settings.storedToken.expires_at).getTime(),
-        };
-        return {
-          access_token: settings.storedToken.access_token,
-          token: settings.storedToken.access_token,
-          refresh_token: settings.storedToken.refresh_token,
-          expires_in: expiresIn,
-        };
+      if (settings.storedToken && settings.storedToken.access_token) {
+        const expiresAt = settings.storedToken.expires_at 
+          ? new Date(settings.storedToken.expires_at) 
+          : null;
+        const now = new Date();
+        
+        console.log(`🔍 Checking stored token validity:`, {
+          hasToken: !!settings.storedToken.access_token,
+          expiresAt: expiresAt ? expiresAt.toISOString() : 'null',
+          now: now.toISOString(),
+          isValid: expiresAt && expiresAt > now,
+        });
+
+        if (expiresAt && expiresAt > now) {
+          // Use stored token
+          const expiresIn = Math.floor((expiresAt.getTime() - Date.now()) / 1000);
+          console.log(`✅ Using stored token (expires in ${expiresIn}s)`);
+          
+          this.tokenCache[subdomain] = {
+            token: settings.storedToken.access_token,
+            expiry: expiresAt.getTime(),
+          };
+          return {
+            access_token: settings.storedToken.access_token,
+            token: settings.storedToken.access_token,
+            refresh_token: settings.storedToken.refresh_token,
+            expires_in: expiresIn,
+          };
+        } else {
+          console.log(`⚠️ Stored token expired or invalid, fetching new token`);
+        }
+      } else {
+        console.log(`⚠️ No stored token found, fetching new token`);
       }
 
       // Get new token from QPay API
+      console.log(`🔄 Fetching new token from QPay API: ${settings.baseURL}/v2/auth/token`);
       const authHeader = Buffer.from(
         `${settings.username}:${settings.password}`
       ).toString("base64");
@@ -133,10 +151,14 @@ class QpayService {
         }
       );
 
+      console.log(`📥 QPay API response status: ${response.status}`);
+
       if (response.data && response.data.access_token) {
         // Cache the token
         const expiresIn = response.data.expires_in || 3600;
         const expiresAt = new Date(Date.now() + expiresIn * 1000);
+
+        console.log(`✅ New token received (expires in ${expiresIn}s)`);
 
         this.tokenCache[subdomain] = {
           token: response.data.access_token,
@@ -158,8 +180,9 @@ class QpayService {
               },
             }
           );
+          console.log(`💾 Token saved to database`);
         } catch (updateError) {
-          console.error("Failed to update token in database:", updateError);
+          console.error("❌ Failed to update token in database:", updateError);
           // Continue even if update fails
         }
 
@@ -171,17 +194,27 @@ class QpayService {
         };
       }
 
+      console.log(`⚠️ Unexpected response format:`, response.data);
       return response.data;
     } catch (error) {
-      console.error(
-        "Qpay getToken error:",
-        error.response?.data || error.message
-      );
-      throw new Error(
+      console.error("❌ Qpay getToken error:", {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        config: {
+          url: error.config?.url,
+          method: error.config?.method,
+        },
+      });
+      
+      const errorMessage = 
         error.response?.data?.message ||
-          error.response?.data?.error ||
-          "Failed to get Qpay token"
-      );
+        error.response?.data?.error ||
+        error.message ||
+        "Failed to get Qpay token";
+      
+      throw new Error(`Qpay API request failed: ${errorMessage}`);
     }
   }
 
