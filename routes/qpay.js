@@ -231,10 +231,23 @@ router.post("/invoice", authenticate, async (req, res) => {
       // Save failed invoice to database
       try {
         const invoicesCollection = tenantDb.db.collection("invoices");
-        await invoicesCollection.insertOne(invoiceDocument);
+        const insertResult = await invoicesCollection.insertOne(
+          invoiceDocument
+        );
         console.log("✅ Failed invoice saved to database for tracking");
+        console.log("📝 Invoice document saved:", {
+          _id: insertResult.insertedId,
+          sender_invoice_no: invoiceDocument.sender_invoice_no,
+          status: invoiceDocument.status,
+          subdomain: invoiceDocument.subdomain,
+        });
       } catch (dbError) {
         console.error("❌ Failed to save invoice to database:", dbError);
+        console.error("❌ Database error details:", {
+          message: dbError.message,
+          code: dbError.code,
+          dbName: tenantDb.dbName,
+        });
       }
 
       // Return error response

@@ -302,17 +302,20 @@ class QpayService {
    * @returns {Promise<Object>} API response
    */
   async request(centralDb, subdomain, method, endpoint, data = null) {
+    let fullUrl = null;
+    let settings = null;
+
     try {
       await this.ensureToken(centralDb, subdomain);
 
-      const settings = await this.getOrganizationSettings(centralDb, subdomain);
+      settings = await this.getOrganizationSettings(centralDb, subdomain);
       const cached = this.tokenCache[subdomain];
 
       if (!cached || !cached.token) {
         throw new Error("No valid token available. Please authenticate first.");
       }
 
-      const fullUrl = `${settings.baseURL}${endpoint}`;
+      fullUrl = `${settings.baseURL}${endpoint}`;
       console.log(`🌐 QPay API Request: ${method} ${fullUrl}`);
       console.log(`📋 Base URL: ${settings.baseURL}, Endpoint: ${endpoint}`);
 
@@ -404,8 +407,8 @@ class QpayService {
 
       console.error(`❌ Qpay ${method} ${endpoint} error:`, {
         message: error.message,
-        url: fullUrl,
-        baseURL: settings.baseURL,
+        url: fullUrl || `${settings?.baseURL || "unknown"}${endpoint}`,
+        baseURL: settings?.baseURL || "unknown",
         endpoint: endpoint,
         response: error.response?.data,
         status: error.response?.status,
