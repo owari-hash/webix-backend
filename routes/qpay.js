@@ -201,7 +201,46 @@ router.post("/invoice", authenticate, async (req, res) => {
         },
       });
     } catch (qpayError) {
-      console.error("QPay API error:", qpayError);
+      console.error("QPay API error:", {
+        message: qpayError.message,
+        status: qpayError.response?.status,
+        statusText: qpayError.response?.statusText,
+        data: qpayError.response?.data,
+        config: qpayError.config?.url,
+      });
+
+      // Extract error details properly
+      const errorCode =
+        qpayError.response?.status || qpayError.code || "UNKNOWN";
+      let errorDetails = null;
+
+      if (qpayError.response?.data) {
+        // Try to parse if it's HTML (404 responses are often HTML)
+        if (
+          typeof qpayError.response.data === "string" &&
+          qpayError.response.data.includes("<html>")
+        ) {
+          errorDetails = {
+            type: "html_response",
+            message: "QPay API returned HTML (likely 404 - endpoint not found)",
+            hint: "The endpoint /v2/invoice may not exist for QuickQR or your merchant type. Person merchants might need to use a different endpoint or register as company merchant.",
+          };
+        } else {
+          errorDetails = qpayError.response.data;
+        }
+      } else if (qpayError.response?.statusText) {
+        errorDetails = { statusText: qpayError.response.statusText };
+      } else {
+        errorDetails = { message: qpayError.message };
+      }
+
+      // Check merchant type for helpful hint
+      const merchantType = organization.qpay?.khariltsagch?.merchant_type;
+      if (merchantType === "person" && errorCode === 404) {
+        errorDetails.hint =
+          errorDetails.hint ||
+          "Person merchants might not have access to invoice creation. Try registering as a company merchant instead.";
+      }
 
       // Save failed invoice attempt to database for tracking
       invoiceDocument = {
@@ -219,8 +258,11 @@ router.post("/invoice", authenticate, async (req, res) => {
         status: "FAILED", // FAILED status for tracking
         error: {
           message: qpayError.message || "Failed to create invoice",
-          code: qpayError.response?.status || "UNKNOWN",
-          details: qpayError.response?.data || null,
+          code: errorCode,
+          status: qpayError.response?.status,
+          statusText: qpayError.response?.statusText,
+          details: errorDetails,
+          url: qpayError.config?.url || null,
         },
         created_by: req.user._id || req.user.id,
         subdomain: subdomain,
@@ -290,7 +332,7 @@ router.get("/invoice/:id", authenticate, async (req, res) => {
 
     // Try to find in local database first (by MongoDB _id or invoice_id)
     const invoicesCollection = tenantDb.db.collection("invoices");
-    
+
     // Try as MongoDB ObjectId first, then as string
     let invoice = null;
     try {
