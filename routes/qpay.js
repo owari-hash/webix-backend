@@ -30,10 +30,15 @@ router.post("/invoice", authenticate, async (req, res) => {
     }
 
     // Check if QPay is registered
-    if (!organization.qpay || !organization.qpay.khariltsagch || !organization.qpay.khariltsagch.merchant_id) {
+    if (
+      !organization.qpay ||
+      !organization.qpay.khariltsagch ||
+      !organization.qpay.khariltsagch.merchant_id
+    ) {
       return res.status(400).json({
         success: false,
-        message: "QPay merchant not registered for this organization. Please register QPay merchant first.",
+        message:
+          "QPay merchant not registered for this organization. Please register QPay merchant first.",
       });
     }
 
@@ -51,14 +56,30 @@ router.post("/invoice", authenticate, async (req, res) => {
     }
 
     // Prepare invoice data for QPay API
+    // QPay API expects: merchant_id, amount, currency, description, callback_url
+    // Optional: branch_code, customer_name, customer_logo, mcc_code, bank_accounts
     const qpayInvoiceData = {
       merchant_id: merchantId,
       amount: invoiceData.amount,
       currency: invoiceData.currency || "MNT",
-      invoice_description: invoiceData.description || invoiceData.invoice_description || "Invoice payment",
-      invoice_receiver_code: invoiceData.invoice_receiver_code || "",
-      callback_url: invoiceData.callback_url || `${process.env.FRONTEND_URL || "http://localhost:8002"}/payment/callback`,
-      sender_invoice_no: invoiceData.sender_invoice_no || `INV-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      description:
+        invoiceData.description ||
+        invoiceData.invoice_description ||
+        "Invoice payment",
+      callback_url:
+        invoiceData.callback_url ||
+        `${
+          process.env.FRONTEND_URL || "http://localhost:8002"
+        }/payment/callback`,
+      // Optional fields
+      ...(invoiceData.branch_code && { branch_code: invoiceData.branch_code }),
+      ...(invoiceData.customer_name && {
+        customer_name: invoiceData.customer_name,
+      }),
+      ...(invoiceData.mcc_code && { mcc_code: invoiceData.mcc_code }),
+      ...(invoiceData.bank_accounts && {
+        bank_accounts: invoiceData.bank_accounts,
+      }),
     };
 
     // Create invoice via QPay API
@@ -75,8 +96,10 @@ router.post("/invoice", authenticate, async (req, res) => {
       merchant_id: merchantId,
       amount: invoiceData.amount,
       currency: qpayInvoiceData.currency,
-      description: qpayInvoiceData.invoice_description,
-      sender_invoice_no: qpayInvoiceData.sender_invoice_no,
+      description: qpayInvoiceData.description,
+      sender_invoice_no:
+        invoiceData.sender_invoice_no ||
+        `INV-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       qr_text: qpayResult.qr_text || null,
       qr_image: qpayResult.qr_image || null,
       qr_code: qpayResult.qr_code || null,
@@ -194,7 +217,7 @@ router.post("/payment/check", authenticate, async (req, res) => {
     // Update invoice status in database
     const invoicesCollection = tenantDb.db.collection("invoices");
     const paymentStatus = result.payment_status || result.status;
-    
+
     let status = "PENDING";
     if (paymentStatus === "PAID" || paymentStatus === "paid") {
       status = "PAID";
@@ -242,7 +265,7 @@ router.get("/invoices", authenticate, async (req, res) => {
     const { status, limit = 50, skip = 0 } = req.query;
 
     const invoicesCollection = tenantDb.db.collection("invoices");
-    
+
     let query = {};
     if (status) {
       query.status = status.toUpperCase();

@@ -82,11 +82,15 @@ class QpayService {
   async getToken(centralDb, subdomain) {
     try {
       console.log(`🔑 Getting QPay token for subdomain: ${subdomain}`);
-      
+
       // Check cache first
       const cached = this.tokenCache[subdomain];
       if (cached && cached.expiry && Date.now() < cached.expiry) {
-        console.log(`✅ Using cached token (expires in ${Math.floor((cached.expiry - Date.now()) / 1000)}s)`);
+        console.log(
+          `✅ Using cached token (expires in ${Math.floor(
+            (cached.expiry - Date.now()) / 1000
+          )}s)`
+        );
         return {
           access_token: cached.token,
           token: cached.token,
@@ -96,27 +100,31 @@ class QpayService {
 
       // Get organization settings (includes stored token)
       const settings = await this.getOrganizationSettings(centralDb, subdomain);
-      console.log(`📋 Organization settings retrieved. Terminal ID: ${settings.terminalId}, Merchant ID: ${settings.merchantId}`);
+      console.log(
+        `📋 Organization settings retrieved. Terminal ID: ${settings.terminalId}, Merchant ID: ${settings.merchantId}`
+      );
 
       // Check if stored token is still valid
       if (settings.storedToken && settings.storedToken.access_token) {
-        const expiresAt = settings.storedToken.expires_at 
-          ? new Date(settings.storedToken.expires_at) 
+        const expiresAt = settings.storedToken.expires_at
+          ? new Date(settings.storedToken.expires_at)
           : null;
         const now = new Date();
-        
+
         console.log(`🔍 Checking stored token validity:`, {
           hasToken: !!settings.storedToken.access_token,
-          expiresAt: expiresAt ? expiresAt.toISOString() : 'null',
+          expiresAt: expiresAt ? expiresAt.toISOString() : "null",
           now: now.toISOString(),
           isValid: expiresAt && expiresAt > now,
         });
 
         if (expiresAt && expiresAt > now) {
           // Use stored token
-          const expiresIn = Math.floor((expiresAt.getTime() - Date.now()) / 1000);
+          const expiresIn = Math.floor(
+            (expiresAt.getTime() - Date.now()) / 1000
+          );
           console.log(`✅ Using stored token (expires in ${expiresIn}s)`);
-          
+
           this.tokenCache[subdomain] = {
             token: settings.storedToken.access_token,
             expiry: expiresAt.getTime(),
@@ -135,7 +143,9 @@ class QpayService {
       }
 
       // Get new token from QPay API
-      console.log(`🔄 Fetching new token from QPay API: ${settings.baseURL}/v2/auth/token`);
+      console.log(
+        `🔄 Fetching new token from QPay API: ${settings.baseURL}/v2/auth/token`
+      );
       const authHeader = Buffer.from(
         `${settings.username}:${settings.password}`
       ).toString("base64");
@@ -207,13 +217,13 @@ class QpayService {
           method: error.config?.method,
         },
       });
-      
-      const errorMessage = 
+
+      const errorMessage =
         error.response?.data?.message ||
         error.response?.data?.error ||
         error.message ||
         "Failed to get Qpay token";
-      
+
       throw new Error(`Qpay API request failed: ${errorMessage}`);
     }
   }
@@ -316,6 +326,13 @@ class QpayService {
         (method === "POST" || method === "PUT" || method === "PATCH")
       ) {
         config.data = data;
+        // Log invoice creation requests for debugging
+        if (endpoint === "/v2/invoice") {
+          console.log(
+            `📝 Creating QPay invoice with data:`,
+            JSON.stringify(data, null, 2)
+          );
+        }
       }
 
       const response = await axios(config);
@@ -381,15 +398,21 @@ class QpayService {
         }
       }
 
-      console.error(
-        `Qpay ${method} ${endpoint} error:`,
-        error.response?.data || error.message
-      );
-      throw new Error(
+      console.error(`❌ Qpay ${method} ${endpoint} error:`, {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        requestData: endpoint === "/v2/invoice" ? config.data : undefined,
+      });
+
+      const errorMessage =
         error.response?.data?.message ||
-          error.response?.data?.error ||
-          `Qpay API request failed: ${error.message}`
-      );
+        error.response?.data?.error ||
+        error.message ||
+        `Qpay API request failed`;
+
+      throw new Error(errorMessage);
     }
   }
 
