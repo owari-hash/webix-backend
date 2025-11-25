@@ -236,11 +236,14 @@ router.post("/invoice", authenticate, async (req, res) => {
         );
         console.log("✅ Failed invoice saved to database for tracking");
         console.log("📝 Invoice document saved:", {
-          _id: insertResult.insertedId,
+          _id: insertResult.insertedId.toString(),
           sender_invoice_no: invoiceDocument.sender_invoice_no,
           status: invoiceDocument.status,
           subdomain: invoiceDocument.subdomain,
+          merchant_id: invoiceDocument.merchant_id,
         });
+        // Add _id to invoice document for response
+        invoiceDocument._id = insertResult.insertedId;
       } catch (dbError) {
         console.error("❌ Failed to save invoice to database:", dbError);
         console.error("❌ Database error details:", {
@@ -250,7 +253,7 @@ router.post("/invoice", authenticate, async (req, res) => {
         });
       }
 
-      // Return error response
+      // Return error response with invoice info
       res.status(500).json({
         success: false,
         message: qpayError.message || "Failed to create invoice",
@@ -259,6 +262,9 @@ router.post("/invoice", authenticate, async (req, res) => {
           details: qpayError.response?.data,
         },
         invoice: invoiceDocument, // Return the saved invoice document
+        invoice_id: invoiceDocument._id?.toString() || null, // MongoDB _id for database queries
+        sender_invoice_no: senderInvoiceNo, // Our internal invoice number
+        merchant_id: merchantId, // Merchant ID for reference
       });
     }
   } catch (error) {
@@ -279,15 +285,61 @@ router.get("/invoice/:id", authenticate, async (req, res) => {
   try {
     const { id } = req.params;
     const subdomain = req.subdomain;
+    const tenantDb = req.db;
     const centralDb = req.centralDb;
 
-    const result = await qpayService.getInvoice(centralDb, subdomain, id);
+    // Try to find in local database first (by MongoDB _id or invoice_id)
+    const invoicesCollection = tenantDb.db.collection("invoices");
+    
+    // Try as MongoDB ObjectId first, then as string
+    let invoice = null;
+    try {
+      const mongoose = require("mongoose");
+      const ObjectId = mongoose.Types.ObjectId;
+      invoice = await invoicesCollection.findOne({
+        $or: [
+          { _id: new ObjectId(id) },
+          { invoice_id: id },
+          { qpay_invoice_id: id },
+          { sender_invoice_no: id },
+        ],
+        subdomain: subdomain,
+      });
+    } catch (e) {
+      // If ObjectId conversion fails, try as string
+      invoice = await invoicesCollection.findOne({
+        $or: [
+          { invoice_id: id },
+          { qpay_invoice_id: id },
+          { sender_invoice_no: id },
+        ],
+        subdomain: subdomain,
+      });
+    }
 
-    res.json({
-      success: true,
-      message: "Invoice retrieved successfully",
-      data: result,
-    });
+    if (invoice) {
+      return res.json({
+        success: true,
+        message: "Invoice retrieved from database",
+        data: invoice,
+      });
+    }
+
+    // If not found in database, try to get from QPay API (if it's a QPay invoice_id)
+    try {
+      const result = await qpayService.getInvoice(centralDb, subdomain, id);
+      return res.json({
+        success: true,
+        message: "Invoice retrieved from QPay API",
+        data: result,
+      });
+    } catch (qpayError) {
+      return res.status(404).json({
+        success: false,
+        message: "Invoice not found",
+        hint: "Invoice not found in database or QPay API. Check the invoice ID.",
+      });
+    }
   } catch (error) {
     console.error("Get invoice error:", error);
     res.status(500).json({
