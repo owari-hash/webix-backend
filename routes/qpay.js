@@ -92,12 +92,15 @@ router.post("/invoice", authenticate, async (req, res) => {
       merchant_id: merchantId,
       amount: invoiceData.amount,
       currency: invoiceData.currency || "MNT",
-      // Sanitize description - limit length and ensure it's a valid string
-      description: (
-        invoiceData.description ||
-        invoiceData.invoice_description ||
-        "Invoice payment"
-      ).substring(0, 255), // Limit length
+      // Description - QPay supports UTF-8, just limit length
+      description:
+        (
+          invoiceData.description ||
+          invoiceData.invoice_description ||
+          "Invoice payment"
+        )
+          .trim()
+          .substring(0, 255) || "Invoice payment", // Limit to 255 chars
       callback_url: callbackUrl,
       // Optional fields
       ...(invoiceData.branch_code && { branch_code: invoiceData.branch_code }),
