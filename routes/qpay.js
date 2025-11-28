@@ -139,7 +139,7 @@ router.post("/invoice", authenticate, async (req, res) => {
           ? invoiceData.bank_accounts
           : [
               {
-                account_bank_code: process.env.QPAY_BANK_CODE || "74000500",
+                account_bank_code: process.env.QPAY_BANK_CODE || "050000",
                 account_number: process.env.QPAY_ACCOUNT_NUMBER || "5039842709",
                 account_name: process.env.QPAY_ACCOUNT_NAME || "Отгонбилэг",
                 is_default: true,
