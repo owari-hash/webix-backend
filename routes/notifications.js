@@ -19,10 +19,20 @@ router.get("/", authenticate, async (req, res) => {
     const ObjectId = mongoose.Types.ObjectId;
 
     // Convert userId to ObjectId for query
-    const userIdObj = new ObjectId(userId);
+    let userIdObj;
+    try {
+      userIdObj = new ObjectId(userId);
+    } catch (error) {
+      console.error("Invalid userId format:", userId, error);
+      return res.status(400).json({
+        success: false,
+        message: "Invalid user ID format",
+      });
+    }
 
+    // Build query - user_id is stored as ObjectId in database
     const query = {
-      user_id: userIdObj,
+      user_id: userIdObj, // Match ObjectId directly
       subdomain: subdomain,
     };
 
@@ -30,12 +40,30 @@ router.get("/", authenticate, async (req, res) => {
       query.is_read = false;
     }
 
+    // Debug logging
+    console.log("🔔 Notifications query:", {
+      userId,
+      userIdObj: userIdObj.toString(),
+      subdomain,
+      query: {
+        user_id: userIdObj.toString(),
+        subdomain: subdomain,
+        is_read: query.is_read,
+      },
+    });
+
     const dbNotifications = await notificationsCollection
       .find(query)
       .sort({ createdAt: -1 })
       .limit(parseInt(limit))
       .skip(parseInt(skip))
       .toArray();
+
+    console.log(
+      `🔔 Found ${
+        dbNotifications.length
+      } notifications for user ${userId} (${userIdObj.toString()})`
+    );
 
     // Format database notifications
     dbNotifications.forEach((notif) => {
@@ -218,6 +246,57 @@ router.put("/read-all", authenticate, async (req, res) => {
     res.status(500).json({
       success: false,
       message: error.message || "Failed to mark all notifications as read",
+    });
+  }
+});
+
+// @route   GET /api2/notifications/debug
+// @desc    Debug endpoint to check notifications in database
+// @access  Private (Admin only)
+router.get("/debug", authenticate, async (req, res) => {
+  try {
+    const tenantDb = req.db;
+    const notificationsCollection = tenantDb.db.collection("notifications");
+
+    // Get all notifications for this subdomain
+    const allNotifications = await notificationsCollection
+      .find({ subdomain: req.subdomain })
+      .limit(20)
+      .toArray();
+
+    // Get sample notification structure
+    const sample = allNotifications[0] || null;
+
+    res.json({
+      success: true,
+      debug: {
+        subdomain: req.subdomain,
+        current_user_id: req.user.userId,
+        total_notifications: allNotifications.length,
+        sample_notification: sample
+          ? {
+              _id: sample._id?.toString(),
+              user_id: sample.user_id?.toString(),
+              user_id_type: typeof sample.user_id,
+              type: sample.type,
+              title: sample.title,
+              subdomain: sample.subdomain,
+            }
+          : null,
+        all_notifications: allNotifications.map((n) => ({
+          _id: n._id?.toString(),
+          user_id: n.user_id?.toString(),
+          user_id_type: typeof n.user_id,
+          type: n.type,
+          title: n.title,
+        })),
+      },
+    });
+  } catch (error) {
+    console.error("Debug notifications error:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to debug notifications",
     });
   }
 });

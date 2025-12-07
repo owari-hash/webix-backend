@@ -30,7 +30,8 @@ async function createNotification({
     const ObjectId = mongoose.Types.ObjectId;
 
     // Convert userId to ObjectId if it's a string
-    const userIdObj = typeof userId === "string" ? new ObjectId(userId) : userId;
+    const userIdObj =
+      typeof userId === "string" ? new ObjectId(userId) : userId;
 
     const notification = {
       user_id: userIdObj,
@@ -159,4 +160,3 @@ module.exports = {
   notifyAdmins,
   notifyUser,
 };
-
