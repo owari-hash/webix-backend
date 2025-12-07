@@ -344,6 +344,7 @@ const organizationsRoutes = require("./routes/organizations");
 const notificationsRoutes = require("./routes/notifications");
 const qpayRoutes = require("./routes/qpay");
 const feedbackRoutes = require("./routes/feedback");
+const dashboardRoutes = require("./routes/dashboard");
 const { authenticate, authorize } = require("./middleware/auth");
 const {
   authLimiter,
@@ -389,6 +390,7 @@ app.use("/api2/organizations", publicLimiter, organizationsRoutes); // Lenient: 
 app.use("/api2/notifications", defaultLimiter, notificationsRoutes); // Default: 100 req/15min
 app.use("/api2/qpay", defaultLimiter, qpayRoutes); // Default: 100 req/15min
 app.use("/api2/feedback", defaultLimiter, feedbackRoutes); // Default: 100 req/15min
+app.use("/api2/dashboard", defaultLimiter, dashboardRoutes); // Default: 100 req/15min
 
 // Welcome route - shows subdomain and database separation
 app.get("/", (req, res) => {
@@ -977,6 +979,8 @@ const server = app.listen(port, () => {
   console.log(`   PUT    /api2/feedback/:id/status - Update status (Admin)`);
   console.log(`   DELETE /api2/feedback/:id - Delete feedback`);
   console.log(`   GET    /api2/feedback/stats - Get statistics (Admin)`);
+  console.log(`\n📊 CMS Dashboard (Admin only):`);
+  console.log(`   GET    /api2/dashboard - Get dashboard statistics`);
   console.log(`\n⚙️  Server Configuration:`);
   console.log(`   Body Size Limit: 100mb`);
   console.log(`   Request Timeout: 5 minutes`);
