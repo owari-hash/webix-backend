@@ -1,6 +1,7 @@
 const express = require("express");
 const { authenticate, authorize } = require("../middleware/auth");
 const Feedback = require("../models/Feedback");
+const { notifyAdmins, notifyUser } = require("../utils/notifications");
 
 const router = express.Router();
 
@@ -84,6 +85,36 @@ router.post("/", authenticate, async (req, res) => {
     });
 
     await feedback.save();
+
+    // Notify all admin users about new feedback
+    try {
+      const typeNames = {
+        санал: "Санал",
+        хүсэл: "Хүсэл",
+        гомдол: "Гомдол",
+      };
+      const typeName = typeNames[type] || type;
+
+      await notifyAdmins({
+        tenantDb,
+        subdomain,
+        type: "feedback_new",
+        title: `Шинэ ${typeName}: ${title}`,
+        message: `${
+          user?.name || user?.firstName || "Хэрэглэгч"
+        } шинэ ${typeName} илгээлээ: ${title}`,
+        metadata: {
+          feedback_id: feedback._id.toString(),
+          feedback_type: type,
+          user_id: userId,
+          user_name: feedback.user_name,
+          action: `/cms/feedback/${feedback._id}`,
+        },
+      });
+    } catch (notifyError) {
+      console.error("Failed to notify admins:", notifyError);
+      // Don't fail the request if notification fails
+    }
 
     res.status(201).json({
       success: true,
@@ -334,6 +365,34 @@ router.put(
       }
 
       await feedback.save();
+
+      // Notify the user who submitted the feedback
+      try {
+        const typeNames = {
+          санал: "Санал",
+          хүсэл: "Хүсэл",
+          гомдол: "Гомдол",
+        };
+        const typeName = typeNames[feedback.type] || feedback.type;
+
+        await notifyUser({
+          tenantDb,
+          userId: feedback.user_id, // Pass ObjectId directly
+          subdomain: req.subdomain,
+          type: "feedback_response",
+          title: `Таны ${typeName}д хариу өгөгдлөө`,
+          message: `Таны "${feedback.title}" ${typeName}д админ хариу өгсөн байна.`,
+          metadata: {
+            feedback_id: feedback._id.toString(),
+            feedback_type: feedback.type,
+            responded_by: userId,
+            action: `/cms/feedback/${feedback._id}`,
+          },
+        });
+      } catch (notifyError) {
+        console.error("Failed to notify user:", notifyError);
+        // Don't fail the request if notification fails
+      }
 
       res.json({
         success: true,

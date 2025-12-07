@@ -82,16 +82,20 @@ router.get("/", authenticate, authorize("admin"), async (req, res) => {
       }),
 
       // Total views from comics
-      comicsCollection.aggregate([
-        { $match: { subdomain } },
-        { $group: { _id: null, total: { $sum: "$views" } } },
-      ]).toArray(),
+      comicsCollection
+        .aggregate([
+          { $match: { subdomain } },
+          { $group: { _id: null, total: { $sum: "$views" } } },
+        ])
+        .toArray(),
 
       // Total views from chapters
-      chaptersCollection.aggregate([
-        { $match: { subdomain } },
-        { $group: { _id: null, total: { $sum: "$views" } } },
-      ]).toArray(),
+      chaptersCollection
+        .aggregate([
+          { $match: { subdomain } },
+          { $group: { _id: null, total: { $sum: "$views" } } },
+        ])
+        .toArray(),
 
       // Latest comics (limit 10)
       comicsCollection
@@ -142,7 +146,9 @@ router.get("/", authenticate, authorize("admin"), async (req, res) => {
               })
             : null,
           formatted: licenseExpiry
-            ? `${licenseExpiry.getMonth() + 1}/${licenseExpiry.getDate()}/${licenseExpiry.getFullYear()}`
+            ? `${
+                licenseExpiry.getMonth() + 1
+              }/${licenseExpiry.getDate()}/${licenseExpiry.getFullYear()}`
             : null,
         },
         statistics: {
@@ -167,4 +173,3 @@ router.get("/", authenticate, authorize("admin"), async (req, res) => {
 });
 
 module.exports = router;
-

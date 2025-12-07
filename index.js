@@ -981,6 +981,13 @@ const server = app.listen(port, () => {
   console.log(`   GET    /api2/feedback/stats - Get statistics (Admin)`);
   console.log(`\n📊 CMS Dashboard (Admin only):`);
   console.log(`   GET    /api2/dashboard - Get dashboard statistics`);
+  console.log(`\n🔔 Notifications:`);
+  console.log(`   GET    /api2/notifications - Get user notifications`);
+  console.log(
+    `   PUT    /api2/notifications/:id/read - Mark notification as read`
+  );
+  console.log(`   PUT    /api2/notifications/read-all - Mark all as read`);
+  console.log(`   Note: Auto-notifications for feedback (санал хүсэл гомдол)`);
   console.log(`\n⚙️  Server Configuration:`);
   console.log(`   Body Size Limit: 100mb`);
   console.log(`   Request Timeout: 5 minutes`);
