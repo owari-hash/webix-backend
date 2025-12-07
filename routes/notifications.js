@@ -40,64 +40,12 @@ router.get("/", authenticate, async (req, res) => {
       query.is_read = false;
     }
 
-    // Debug logging
-    console.log("🔔 Notifications query:", {
-      userId,
-      userIdObj: userIdObj.toString(),
-      userIdObjType: userIdObj.constructor.name,
-      subdomain,
-      query: {
-        user_id: userIdObj, // Keep as ObjectId for query
-        user_id_string: userIdObj.toString(), // For logging only
-        subdomain: subdomain,
-        is_read: query.is_read,
-      },
-    });
-
-    // Verify query is using ObjectId
-    console.log("🔔 Query object type check:", {
-      user_id_type: query.user_id.constructor.name,
-      user_id_value: query.user_id.toString(),
-      isObjectId: query.user_id instanceof ObjectId,
-    });
-
     const dbNotifications = await notificationsCollection
       .find(query)
       .sort({ createdAt: -1 })
       .limit(parseInt(limit))
       .skip(parseInt(skip))
       .toArray();
-
-    console.log(
-      `🔔 Found ${
-        dbNotifications.length
-      } notifications for user ${userId} (${userIdObj.toString()})`
-    );
-
-    // Debug: Check if there are any notifications for this subdomain at all
-    if (dbNotifications.length === 0) {
-      const allNotificationsCount =
-        await notificationsCollection.countDocuments({
-          subdomain: subdomain,
-        });
-      console.log(
-        `🔔 Debug: Total notifications in database for subdomain '${subdomain}': ${allNotificationsCount}`
-      );
-      if (allNotificationsCount > 0) {
-        const sampleNotification = await notificationsCollection.findOne({
-          subdomain: subdomain,
-        });
-        if (sampleNotification) {
-          console.log("🔔 Sample notification user_id:", {
-            stored_user_id: sampleNotification.user_id?.toString(),
-            stored_user_id_type: sampleNotification.user_id?.constructor?.name,
-            querying_user_id: userIdObj.toString(),
-            match:
-              sampleNotification.user_id?.toString() === userIdObj.toString(),
-          });
-        }
-      }
-    }
 
     // Format database notifications
     dbNotifications.forEach((notif) => {

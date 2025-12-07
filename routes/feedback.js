@@ -67,11 +67,18 @@ router.post("/", authenticate, async (req, res) => {
 
     // Create feedback document
     const FeedbackModel = tenantDb.model("Feedback", Feedback);
+    const mongoose = require("mongoose");
+    const ObjectId = mongoose.Types.ObjectId;
+
+    // Convert userId to ObjectId if it's a string
+    const userIdObj =
+      typeof userId === "string" ? new ObjectId(userId) : userId;
+
     const feedback = new FeedbackModel({
       type,
       title: title.trim(),
       content: content.trim(),
-      user_id: userId,
+      user_id: userIdObj, // Store as ObjectId
       user_name:
         user?.name || user?.firstName || req.user.email || "Unknown User",
       user_email: user?.email || req.user.email || null,
@@ -148,12 +155,16 @@ router.get("/", authenticate, authorize("admin"), async (req, res) => {
     } = req.query;
 
     const tenantDb = req.db;
-    const FeedbackModel = tenantDb.model("Feedback", Feedback);
 
-    // Build query
+    // Use collection directly to ensure we get all feedback
+    const feedbackCollection = tenantDb.db.collection("Feedback");
+    const mongoose = require("mongoose");
+    const ObjectId = mongoose.Types.ObjectId;
+
+    // Build query - Admin should see ALL feedback for the organization
     const query = {
       subdomain: req.subdomain,
-      is_deleted: false,
+      is_deleted: { $ne: true }, // Handle both false and undefined
     };
 
     if (type) {
@@ -172,14 +183,26 @@ router.get("/", authenticate, authorize("admin"), async (req, res) => {
     const sortOrder = order === "asc" ? 1 : -1;
     const sortObj = { [sort]: sortOrder };
 
-    // Get feedback
-    const feedbacks = await FeedbackModel.find(query)
+    // Debug: Log query for admin
+    console.log("🔍 Admin feedback query:", {
+      subdomain: req.subdomain,
+      query,
+      admin_user_id: req.user.userId,
+    });
+
+    // Get feedback - Admin sees ALL feedback, not filtered by user_id
+    const feedbacks = await feedbackCollection
+      .find(query)
       .sort(sortObj)
       .limit(parseInt(limit))
       .skip(parseInt(skip))
-      .lean();
+      .toArray();
 
-    const total = await FeedbackModel.countDocuments(query);
+    const total = await feedbackCollection.countDocuments(query);
+
+    console.log(
+      `🔍 Found ${feedbacks.length} feedback items for admin (total: ${total})`
+    );
 
     res.json({
       success: true,
