@@ -380,7 +380,7 @@ app.get("/metrics", async (req, res) => {
 });
 
 // Mount routes with appropriate rate limiting
-app.use("/api2/auth", authLimiter, authRoutes); // Strict: 5 req/15min
+app.use("/api2/auth", authLimiter, authRoutes); // Configurable: 50 req/15min (or disabled via DISABLE_AUTH_RATE_LIMIT=true)
 app.use("/api2/webtoon", publicLimiter, webtoonRoutes); // Lenient: 200 req/15min
 app.use("/api2/upload", uploadLimiter, uploadRoutes); // Medium: 10 req/15min
 app.use("/api2/users", defaultLimiter, usersRoutes); // Default: 100 req/15min
@@ -965,11 +965,15 @@ const server = app.listen(port, () => {
   );
   console.log(`   Note: Each organization has its own Qpay credentials`);
   console.log(`\n💬 Feedback System (Санал Хүсэл Гомдол):`);
-  console.log(`   POST   /api2/feedback - Submit feedback (санал, хүсэл, гомдол)`);
+  console.log(
+    `   POST   /api2/feedback - Submit feedback (санал, хүсэл, гомдол)`
+  );
   console.log(`   GET    /api2/feedback - Get all feedback (Admin only)`);
   console.log(`   GET    /api2/feedback/my - Get my feedback`);
   console.log(`   GET    /api2/feedback/:id - Get feedback by ID`);
-  console.log(`   PUT    /api2/feedback/:id/respond - Respond to feedback (Admin)`);
+  console.log(
+    `   PUT    /api2/feedback/:id/respond - Respond to feedback (Admin)`
+  );
   console.log(`   PUT    /api2/feedback/:id/status - Update status (Admin)`);
   console.log(`   DELETE /api2/feedback/:id - Delete feedback`);
   console.log(`   GET    /api2/feedback/stats - Get statistics (Admin)`);

@@ -1,9 +1,9 @@
-const rateLimit = require('express-rate-limit');
-const { isRedisConnected, getRedisClient } = require('../utils/redis');
+const rateLimit = require("express-rate-limit");
+const { isRedisConnected, getRedisClient } = require("../utils/redis");
 
 /**
  * Create rate limiter with Redis store if available, otherwise use memory store
- * 
+ *
  * @param {Object} options - Rate limit options
  * @returns {function} Express middleware
  */
@@ -13,8 +13,8 @@ function createRateLimiter(options = {}) {
     max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100, // limit each IP to 100 requests per windowMs
     message: {
       success: false,
-      message: 'Too many requests from this IP, please try again later.',
-      retryAfter: '15 minutes',
+      message: "Too many requests from this IP, please try again later.",
+      retryAfter: "15 minutes",
     },
     standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
     legacyHeaders: false, // Disable the `X-RateLimit-*` headers
@@ -28,18 +28,20 @@ function createRateLimiter(options = {}) {
   // Use Redis store if available
   if (isRedisConnected()) {
     try {
-      const RedisStore = require('rate-limit-redis');
+      const RedisStore = require("rate-limit-redis");
       const redisClient = getRedisClient();
 
       if (redisClient) {
         defaultOptions.store = new RedisStore({
           client: redisClient,
-          prefix: 'rl:', // Rate limit prefix
+          prefix: "rl:", // Rate limit prefix
         });
-        console.log('✅ Rate limiter using Redis store');
+        console.log("✅ Rate limiter using Redis store");
       }
     } catch (error) {
-      console.warn('⚠️  Redis store not available for rate limiting, using memory store');
+      console.warn(
+        "⚠️  Redis store not available for rate limiting, using memory store"
+      );
     }
   }
 
@@ -55,24 +57,29 @@ const defaultLimiter = createRateLimiter({
   max: 100,
   message: {
     success: false,
-    message: 'Too many requests, please try again later.',
+    message: "Too many requests, please try again later.",
   },
 });
 
 /**
- * Strict rate limiter for authentication endpoints
- * 5 requests per 15 minutes
+ * Rate limiter for authentication endpoints
+ * Configurable via environment variables, or disabled if DISABLE_AUTH_RATE_LIMIT=true
+ * Default: 50 requests per 15 minutes (increased from 5)
  */
-const authLimiter = createRateLimiter({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5,
-  message: {
-    success: false,
-    message: 'Too many authentication attempts, please try again later.',
-    retryAfter: '15 minutes',
-  },
-  skipSuccessfulRequests: true, // Don't count successful logins
-});
+const authLimiter =
+  process.env.DISABLE_AUTH_RATE_LIMIT === "true"
+    ? (req, res, next) => next() // No rate limiting
+    : createRateLimiter({
+        windowMs:
+          parseInt(process.env.AUTH_RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 minutes
+        max: parseInt(process.env.AUTH_RATE_LIMIT_MAX) || 50, // Increased from 5 to 50
+        message: {
+          success: false,
+          message: "Too many authentication attempts, please try again later.",
+          retryAfter: "15 minutes",
+        },
+        skipSuccessfulRequests: true, // Don't count successful logins
+      });
 
 /**
  * Rate limiter for upload endpoints
@@ -83,7 +90,7 @@ const uploadLimiter = createRateLimiter({
   max: 10,
   message: {
     success: false,
-    message: 'Too many upload requests, please try again later.',
+    message: "Too many upload requests, please try again later.",
   },
 });
 
@@ -96,7 +103,7 @@ const publicLimiter = createRateLimiter({
   max: 200,
   message: {
     success: false,
-    message: 'Too many requests, please slow down.',
+    message: "Too many requests, please slow down.",
   },
 });
 
@@ -109,8 +116,9 @@ const strictLimiter = createRateLimiter({
   max: 3,
   message: {
     success: false,
-    message: 'Too many requests for this sensitive operation, please try again later.',
-    retryAfter: '1 hour',
+    message:
+      "Too many requests for this sensitive operation, please try again later.",
+    retryAfter: "1 hour",
   },
 });
 
