@@ -343,6 +343,7 @@ const commentsRoutes = require("./routes/comments");
 const organizationsRoutes = require("./routes/organizations");
 const notificationsRoutes = require("./routes/notifications");
 const qpayRoutes = require("./routes/qpay");
+const feedbackRoutes = require("./routes/feedback");
 const { authenticate, authorize } = require("./middleware/auth");
 const {
   authLimiter,
@@ -387,6 +388,7 @@ app.use("/api2/comments", publicLimiter, commentsRoutes); // Lenient: 200 req/15
 app.use("/api2/organizations", publicLimiter, organizationsRoutes); // Lenient: 200 req/15min
 app.use("/api2/notifications", defaultLimiter, notificationsRoutes); // Default: 100 req/15min
 app.use("/api2/qpay", defaultLimiter, qpayRoutes); // Default: 100 req/15min
+app.use("/api2/feedback", defaultLimiter, feedbackRoutes); // Default: 100 req/15min
 
 // Welcome route - shows subdomain and database separation
 app.get("/", (req, res) => {
@@ -962,6 +964,15 @@ const server = app.listen(port, () => {
     `   PUT    /api2/organizations/:subdomain/qpay-settings - Update Qpay settings`
   );
   console.log(`   Note: Each organization has its own Qpay credentials`);
+  console.log(`\n💬 Feedback System (Санал Хүсэл Гомдол):`);
+  console.log(`   POST   /api2/feedback - Submit feedback (санал, хүсэл, гомдол)`);
+  console.log(`   GET    /api2/feedback - Get all feedback (Admin only)`);
+  console.log(`   GET    /api2/feedback/my - Get my feedback`);
+  console.log(`   GET    /api2/feedback/:id - Get feedback by ID`);
+  console.log(`   PUT    /api2/feedback/:id/respond - Respond to feedback (Admin)`);
+  console.log(`   PUT    /api2/feedback/:id/status - Update status (Admin)`);
+  console.log(`   DELETE /api2/feedback/:id - Delete feedback`);
+  console.log(`   GET    /api2/feedback/stats - Get statistics (Admin)`);
   console.log(`\n⚙️  Server Configuration:`);
   console.log(`   Body Size Limit: 100mb`);
   console.log(`   Request Timeout: 5 minutes`);
