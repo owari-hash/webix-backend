@@ -23,6 +23,16 @@ const commentSchema = new mongoose.Schema(
       ref: "Chapter",
       default: null,
     },
+    novelId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Novel",
+      default: null,
+    },
+    novelChapterId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "NovelChapter",
+      default: null,
+    },
     subdomain: {
       type: String,
       required: true,
@@ -51,28 +61,58 @@ const commentSchema = new mongoose.Schema(
   }
 );
 
-// Validation: Either comicId or chapterId must be provided (unless it's a reply)
+// Validation: Either comicId, chapterId, novelId, or novelChapterId must be provided (unless it's a reply)
 commentSchema.pre("validate", function (next) {
-  // If it's a reply (has parentId), it will inherit comicId/chapterId from parent
+  // If it's a reply (has parentId), it will inherit comicId/chapterId/novelId/novelChapterId from parent
   if (this.parentId) {
     return next();
   }
 
-  // For top-level comments, either comicId or chapterId must be provided
-  if (!this.comicId && !this.chapterId) {
-    return next(new Error("Either comicId or chapterId must be provided"));
+  // For top-level comments, at least one of comicId, chapterId, novelId, or novelChapterId must be provided
+  const hasComic = !!this.comicId;
+  const hasChapter = !!this.chapterId;
+  const hasNovel = !!this.novelId;
+  const hasNovelChapter = !!this.novelChapterId;
+
+  if (!hasComic && !hasChapter && !hasNovel && !hasNovelChapter) {
+    return next(
+      new Error(
+        "Either comicId, chapterId, novelId, or novelChapterId must be provided"
+      )
+    );
   }
-  if (this.comicId && this.chapterId) {
+
+  // Cannot have both comic and novel
+  if ((hasComic || hasChapter) && (hasNovel || hasNovelChapter)) {
+    return next(
+      new Error("Comment cannot be associated with both comic and novel")
+    );
+  }
+
+  // Cannot have both comicId and chapterId
+  if (hasComic && hasChapter) {
     return next(
       new Error("Comment cannot be associated with both comic and chapter")
     );
   }
+
+  // Cannot have both novelId and novelChapterId
+  if (hasNovel && hasNovelChapter) {
+    return next(
+      new Error(
+        "Comment cannot be associated with both novel and novel chapter"
+      )
+    );
+  }
+
   next();
 });
 
 // Indexes for faster queries
 commentSchema.index({ comicId: 1, createdAt: -1 });
 commentSchema.index({ chapterId: 1, createdAt: -1 });
+commentSchema.index({ novelId: 1, createdAt: -1 });
+commentSchema.index({ novelChapterId: 1, createdAt: -1 });
 commentSchema.index({ parentId: 1, createdAt: -1 });
 commentSchema.index({ author: 1 });
 commentSchema.index({ subdomain: 1 });

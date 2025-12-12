@@ -6,15 +6,26 @@
  * Build aggregation pipeline for fetching comments with all related data
  * This replaces the N+1 query problem with a single aggregation query
  * 
- * @param {ObjectId} resourceId - Comic or Chapter ID
- * @param {string} resourceType - 'comic' or 'chapter'
+ * @param {ObjectId} resourceId - Comic, Chapter, Novel, or NovelChapter ID
+ * @param {string} resourceType - 'comic', 'chapter', 'novel', or 'novel-chapter'
  * @param {ObjectId|null} currentUserId - Current user ID for like status
  * @param {number} skip - Pagination skip
  * @param {number} limit - Pagination limit
  * @returns {Array} Aggregation pipeline
  */
 function buildCommentsAggregationPipeline(resourceId, resourceType, currentUserId, skip, limit) {
-  const matchField = resourceType === 'comic' ? 'comicId' : 'chapterId';
+  let matchField;
+  if (resourceType === 'comic') {
+    matchField = 'comicId';
+  } else if (resourceType === 'chapter') {
+    matchField = 'chapterId';
+  } else if (resourceType === 'novel') {
+    matchField = 'novelId';
+  } else if (resourceType === 'novel-chapter') {
+    matchField = 'novelChapterId';
+  } else {
+    throw new Error(`Invalid resourceType: ${resourceType}`);
+  }
   
   const pipeline = [
     // Stage 1: Match top-level comments for the resource
@@ -279,7 +290,19 @@ function buildCommentsAggregationPipeline(resourceId, resourceType, currentUserI
  * Get comments count for pagination
  */
 async function getCommentsCount(db, resourceId, resourceType) {
-  const matchField = resourceType === 'comic' ? 'comicId' : 'chapterId';
+  let matchField;
+  if (resourceType === 'comic') {
+    matchField = 'comicId';
+  } else if (resourceType === 'chapter') {
+    matchField = 'chapterId';
+  } else if (resourceType === 'novel') {
+    matchField = 'novelId';
+  } else if (resourceType === 'novel-chapter') {
+    matchField = 'novelChapterId';
+  } else {
+    throw new Error(`Invalid resourceType: ${resourceType}`);
+  }
+  
   const commentCollection = db.collection('Comment');
   
   return await commentCollection.countDocuments({

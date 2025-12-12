@@ -77,6 +77,162 @@ router.post("/comic/:comicId", authenticate, async (req, res) => {
   }
 });
 
+// @route   POST /api2/comments/novel/:novelId
+// @desc    Post a comment on a novel
+// @access  Private
+router.post("/novel/:novelId", authenticate, async (req, res) => {
+  try {
+    const { ObjectId } = require("mongodb");
+    const { deleteCachePattern } = require("../utils/redis");
+    const { content } = req.body;
+    const { novelId } = req.params;
+
+    if (!content || content.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Comment content is required",
+      });
+    }
+
+    if (content.length > 5000) {
+      return res.status(400).json({
+        success: false,
+        message: "Comment cannot exceed 5000 characters",
+      });
+    }
+
+    // Check if novel exists
+    const novelCollection = req.db.collection("Novel");
+    const novel = await novelCollection.findOne({
+      _id: new ObjectId(novelId),
+    });
+
+    if (!novel) {
+      return res.status(404).json({
+        success: false,
+        message: "Novel not found",
+      });
+    }
+
+    const commentCollection = req.db.collection("Comment");
+
+    const comment = {
+      content: content.trim(),
+      author: new ObjectId(req.user.userId),
+      novelId: new ObjectId(novelId),
+      novelChapterId: null,
+      comicId: null,
+      chapterId: null,
+      novelId: null,
+      novelChapterId: null,
+      subdomain: req.subdomain,
+      likes: 0,
+      isEdited: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    const result = await commentCollection.insertOne(comment);
+
+    // Invalidate cache for this novel's comments
+    await deleteCachePattern(`comments:novel:${novelId}:*`);
+
+    res.status(201).json({
+      success: true,
+      message: "Comment posted successfully",
+      comment: {
+        id: result.insertedId,
+        ...comment,
+      },
+    });
+  } catch (error) {
+    console.error("Post comment on novel error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to post comment",
+      error: error.message,
+    });
+  }
+});
+
+// @route   POST /api2/comments/novel-chapter/:novelChapterId
+// @desc    Post a comment on a novel chapter
+// @access  Private
+router.post("/novel-chapter/:novelChapterId", authenticate, async (req, res) => {
+  try {
+    const { ObjectId } = require("mongodb");
+    const { deleteCachePattern } = require("../utils/redis");
+    const { content } = req.body;
+    const { novelChapterId } = req.params;
+
+    if (!content || content.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Comment content is required",
+      });
+    }
+
+    if (content.length > 5000) {
+      return res.status(400).json({
+        success: false,
+        message: "Comment cannot exceed 5000 characters",
+      });
+    }
+
+    // Check if novel chapter exists
+    const chapterCollection = req.db.collection("NovelChapter");
+    const chapter = await chapterCollection.findOne({
+      _id: new ObjectId(novelChapterId),
+    });
+
+    if (!chapter) {
+      return res.status(404).json({
+        success: false,
+        message: "Novel chapter not found",
+      });
+    }
+
+    const commentCollection = req.db.collection("Comment");
+
+    const comment = {
+      content: content.trim(),
+      author: new ObjectId(req.user.userId),
+      novelId: null,
+      novelChapterId: new ObjectId(novelChapterId),
+      comicId: null,
+      chapterId: null,
+      novelId: null,
+      novelChapterId: null,
+      subdomain: req.subdomain,
+      likes: 0,
+      isEdited: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    const result = await commentCollection.insertOne(comment);
+
+    // Invalidate cache for this chapter's comments
+    await deleteCachePattern(`comments:novel-chapter:${novelChapterId}:*`);
+
+    res.status(201).json({
+      success: true,
+      message: "Comment posted successfully",
+      comment: {
+        id: result.insertedId,
+        ...comment,
+      },
+    });
+  } catch (error) {
+    console.error("Post comment on novel chapter error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to post comment",
+      error: error.message,
+    });
+  }
+});
+
 // @route   POST /api2/comments/chapter/:chapterId
 // @desc    Post a comment on a chapter
 // @access  Private
@@ -188,13 +344,15 @@ router.post("/:commentId/reply", authenticate, async (req, res) => {
       });
     }
 
-    // Create reply - inherit comicId/chapterId from parent
+    // Create reply - inherit comicId/chapterId/novelId/novelChapterId from parent
     const reply = {
       content: content.trim(),
       author: new ObjectId(req.user.userId),
       parentId: new ObjectId(commentId),
       comicId: parentComment.comicId || null,
       chapterId: parentComment.chapterId || null,
+      novelId: parentComment.novelId || null,
+      novelChapterId: parentComment.novelChapterId || null,
       subdomain: req.subdomain,
       likes: 0,
       isEdited: false,
@@ -383,6 +541,180 @@ router.get("/comic/:comicId", async (req, res) => {
     res.json(response);
   } catch (error) {
     console.error("Get comments for comic error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to get comments",
+      error: error.message,
+    });
+  }
+});
+
+// @route   GET /api2/comments/novel/:novelId
+// @desc    Get all comments for a novel (OPTIMIZED with aggregation)
+// @access  Public
+router.get("/novel/:novelId", async (req, res) => {
+  try {
+    const { ObjectId } = require("mongodb");
+    const { novelId } = req.params;
+    const page = parseInt(req.query.page) || 1;
+    const limit = Math.min(parseInt(req.query.limit) || 20, 100); // Max 100 per page
+    const skip = (page - 1) * limit;
+
+    // Import optimized aggregation
+    const { buildCommentsAggregationPipeline, getCommentsCount } = require("../utils/commentAggregation");
+    const { getCache, setCache } = require("../utils/redis");
+
+    // Get current user ID if authenticated (for like status)
+    let currentUserId = null;
+    if (req.headers.authorization) {
+      try {
+        const jwt = require("jsonwebtoken");
+        const JWT_SECRET =
+          process.env.JWT_SECRET || "your-secret-key-change-this-in-production";
+        const token = req.headers.authorization.split(" ")[1];
+        if (token) {
+          const decoded = jwt.verify(token, JWT_SECRET);
+          currentUserId = new ObjectId(decoded.userId);
+        }
+      } catch (e) {
+        // Not authenticated, that's okay
+      }
+    }
+
+    // Try cache first (only for non-authenticated users)
+    const cacheKey = `comments:novel:${novelId}:page:${page}:limit:${limit}`;
+    if (!currentUserId) {
+      const cached = await getCache(cacheKey);
+      if (cached) {
+        console.log(`✅ Cache HIT: ${cacheKey}`);
+        return res.json(cached);
+      }
+    }
+
+    console.log(`❌ Cache MISS: ${cacheKey}`);
+
+    const commentCollection = req.db.collection("Comment");
+    const resourceId = new ObjectId(novelId);
+
+    // Get total count
+    const total = await getCommentsCount(req.db, resourceId, 'novel');
+
+    // Build and execute aggregation pipeline
+    const pipeline = buildCommentsAggregationPipeline(
+      resourceId,
+      'novel',
+      currentUserId,
+      skip,
+      limit
+    );
+
+    const comments = await commentCollection.aggregate(pipeline).toArray();
+
+    const response = {
+      success: true,
+      count: comments.length,
+      total,
+      page,
+      limit,
+      pages: Math.ceil(total / limit),
+      comments,
+    };
+
+    // Cache for 5 minutes (only for non-authenticated users)
+    if (!currentUserId) {
+      await setCache(cacheKey, response, 300);
+    }
+
+    res.json(response);
+  } catch (error) {
+    console.error("Get comments for novel error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to get comments",
+      error: error.message,
+    });
+  }
+});
+
+// @route   GET /api2/comments/novel-chapter/:novelChapterId
+// @desc    Get all comments for a novel chapter (OPTIMIZED with aggregation)
+// @access  Public
+router.get("/novel-chapter/:novelChapterId", async (req, res) => {
+  try {
+    const { ObjectId } = require("mongodb");
+    const { novelChapterId } = req.params;
+    const page = parseInt(req.query.page) || 1;
+    const limit = Math.min(parseInt(req.query.limit) || 20, 100); // Max 100 per page
+    const skip = (page - 1) * limit;
+
+    // Import optimized aggregation
+    const { buildCommentsAggregationPipeline, getCommentsCount } = require("../utils/commentAggregation");
+    const { getCache, setCache } = require("../utils/redis");
+
+    // Get current user ID if authenticated (for like status)
+    let currentUserId = null;
+    if (req.headers.authorization) {
+      try {
+        const jwt = require("jsonwebtoken");
+        const JWT_SECRET =
+          process.env.JWT_SECRET || "your-secret-key-change-this-in-production";
+        const token = req.headers.authorization.split(" ")[1];
+        if (token) {
+          const decoded = jwt.verify(token, JWT_SECRET);
+          currentUserId = new ObjectId(decoded.userId);
+        }
+      } catch (e) {
+        // Not authenticated, that's okay
+      }
+    }
+
+    // Try cache first (only for non-authenticated users)
+    const cacheKey = `comments:novel-chapter:${novelChapterId}:page:${page}:limit:${limit}`;
+    if (!currentUserId) {
+      const cached = await getCache(cacheKey);
+      if (cached) {
+        console.log(`✅ Cache HIT: ${cacheKey}`);
+        return res.json(cached);
+      }
+    }
+
+    console.log(`❌ Cache MISS: ${cacheKey}`);
+
+    const commentCollection = req.db.collection("Comment");
+    const resourceId = new ObjectId(novelChapterId);
+
+    // Get total count
+    const total = await getCommentsCount(req.db, resourceId, 'novel-chapter');
+
+    // Build and execute aggregation pipeline
+    const pipeline = buildCommentsAggregationPipeline(
+      resourceId,
+      'novel-chapter',
+      currentUserId,
+      skip,
+      limit
+    );
+
+    const comments = await commentCollection.aggregate(pipeline).toArray();
+
+    const response = {
+      success: true,
+      count: comments.length,
+      total,
+      page,
+      limit,
+      pages: Math.ceil(total / limit),
+      comments,
+    };
+
+    // Cache for 5 minutes (only for non-authenticated users)
+    if (!currentUserId) {
+      await setCache(cacheKey, response, 300);
+    }
+
+    res.json(response);
+  } catch (error) {
+    console.error("Get comments for novel chapter error:", error);
     res.status(500).json({
       success: false,
       message: "Failed to get comments",
@@ -676,6 +1008,8 @@ router.post("/:id/like", authenticate, async (req, res) => {
       commentId: new ObjectId(id),
       comicId: null,
       chapterId: null,
+      novelId: null,
+      novelChapterId: null,
       subdomain: req.subdomain,
       type: "like",
       createdAt: new Date(),
@@ -832,6 +1166,8 @@ router.post("/:id/dislike", authenticate, async (req, res) => {
       commentId: new ObjectId(id),
       comicId: null,
       chapterId: null,
+      novelId: null,
+      novelChapterId: null,
       subdomain: req.subdomain,
       type: "dislike",
       createdAt: new Date(),
