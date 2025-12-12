@@ -9,23 +9,10 @@ function isValidObjectId(id) {
   return /^[0-9a-fA-F]{24}$/.test(id);
 }
 
-// Reserved words that should not be treated as IDs
-const RESERVED_WORDS = [
-  "novels",
-  "comics",
-  "chapters",
-  "trending",
-  "new",
-  "completed",
-  "search",
-  "browse",
-  "categories",
-];
-
-// @route   POST /api2/webtoon/comic
-// @desc    Create a new comic
+// @route   POST /api2/novel
+// @desc    Create a new novel
 // @access  Private
-router.post("/comic", authenticate, async (req, res) => {
+router.post("/", authenticate, async (req, res) => {
   try {
     const { title, description, coverImage, genre, status } = req.body;
 
@@ -36,9 +23,9 @@ router.post("/comic", authenticate, async (req, res) => {
       });
     }
 
-    const collection = req.db.collection("Comic");
+    const collection = req.db.collection("Novel");
 
-    const comic = {
+    const novel = {
       title,
       description,
       coverImage,
@@ -52,57 +39,110 @@ router.post("/comic", authenticate, async (req, res) => {
       updatedAt: new Date(),
     };
 
-    const result = await collection.insertOne(comic);
+    const result = await collection.insertOne(novel);
 
     res.status(201).json({
       success: true,
-      message: "Comic created successfully",
-      comic: {
+      message: "Novel created successfully",
+      novel: {
         id: result.insertedId,
-        ...comic,
+        ...novel,
       },
     });
   } catch (error) {
-    console.error("Create comic error:", error);
+    console.error("Create novel error:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to create comic",
+      message: "Failed to create novel",
       error: error.message,
     });
   }
 });
 
-// @route   GET /api2/webtoon/comics
-// @desc    Get all comics
+// @route   GET /api2/novel
+// @desc    Get all novels
 // @access  Public
-router.get("/comics", async (req, res) => {
+router.get("/", async (req, res) => {
   try {
-    const collection = req.db.collection("Comic");
-    const comics = await collection.find({}).sort({ createdAt: -1 }).toArray();
+    const collection = req.db.collection("Novel");
+    const novels = await collection.find({}).sort({ createdAt: -1 }).toArray();
 
     res.json({
       success: true,
-      count: comics.length,
-      comics,
+      count: novels.length,
+      data: novels,
+      novels,
     });
   } catch (error) {
-    console.error("Get comics error:", error);
+    console.error("Get novels error:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to get comics",
+      message: "Failed to get novels",
       error: error.message,
     });
   }
 });
 
-// @route   PUT /api2/webtoon/comic/:id
-// @desc    Update comic
+// @route   GET /api2/novel/:id
+// @desc    Get single novel
+// @access  Public
+router.get("/:id", async (req, res) => {
+  try {
+    const { ObjectId } = require("mongodb");
+
+    // Validate ObjectId
+    if (!isValidObjectId(req.params.id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid novel ID format",
+        error: "ID must be a valid 24-character hex string",
+      });
+    }
+
+    const collection = req.db.collection("Novel");
+
+    const novel = await collection.findOne({
+      _id: new ObjectId(req.params.id),
+    });
+
+    if (!novel) {
+      return res.status(404).json({
+        success: false,
+        message: "Novel not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      novel,
+    });
+  } catch (error) {
+    console.error("Get novel error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to get novel",
+      error: error.message,
+    });
+  }
+});
+
+// @route   PUT /api2/novel/:id
+// @desc    Update novel
 // @access  Private
-router.put("/comic/:id", authenticate, async (req, res) => {
+router.put("/:id", authenticate, async (req, res) => {
   try {
     const { ObjectId } = require("mongodb");
     const { title, description, coverImage, genre, status } = req.body;
-    const collection = req.db.collection("Comic");
+    const collection = req.db.collection("Novel");
+
+    // Validate ObjectId
+    if (!isValidObjectId(req.params.id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid novel ID format",
+        error: "ID must be a valid 24-character hex string",
+      });
+    }
 
     const updateFields = { updatedAt: new Date() };
     if (title) updateFields.title = title;
@@ -120,32 +160,42 @@ router.put("/comic/:id", authenticate, async (req, res) => {
     if (!result) {
       return res.status(404).json({
         success: false,
-        message: "Comic not found or unauthorized",
+        message: "Novel not found or unauthorized",
       });
     }
 
     res.json({
       success: true,
-      message: "Comic updated successfully",
-      comic: result,
+      message: "Novel updated successfully",
+      novel: result,
     });
   } catch (error) {
-    console.error("Update comic error:", error);
+    console.error("Update novel error:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to update comic",
+      message: "Failed to update novel",
       error: error.message,
     });
   }
 });
 
-// @route   DELETE /api2/webtoon/comic/:id
-// @desc    Delete comic
+// @route   DELETE /api2/novel/:id
+// @desc    Delete novel
 // @access  Private
-router.delete("/comic/:id", authenticate, async (req, res) => {
+router.delete("/:id", authenticate, async (req, res) => {
   try {
     const { ObjectId } = require("mongodb");
-    const collection = req.db.collection("Comic");
+    
+    // Validate ObjectId
+    if (!isValidObjectId(req.params.id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid novel ID format",
+        error: "ID must be a valid 24-character hex string",
+      });
+    }
+
+    const collection = req.db.collection("Novel");
 
     const result = await collection.deleteOne({
       _id: new ObjectId(req.params.id),
@@ -155,100 +205,109 @@ router.delete("/comic/:id", authenticate, async (req, res) => {
     if (result.deletedCount === 0) {
       return res.status(404).json({
         success: false,
-        message: "Comic not found or unauthorized",
+        message: "Novel not found or unauthorized",
       });
     }
 
-    // Also delete all chapters of this comic
-    const chapterCollection = req.db.collection("Chapter");
+    // Also delete all chapters of this novel
+    const chapterCollection = req.db.collection("NovelChapter");
     const chapters = await chapterCollection
-      .find({ comicId: new ObjectId(req.params.id) })
+      .find({ novelId: new ObjectId(req.params.id) })
       .toArray();
     const chapterIds = chapters.map((ch) => ch._id);
 
     await chapterCollection.deleteMany({
-      comicId: new ObjectId(req.params.id),
+      novelId: new ObjectId(req.params.id),
     });
 
-    // Delete all comments on this comic and its chapters
+    // Delete all comments on this novel and its chapters
     const commentCollection = req.db.collection("Comment");
     await commentCollection.deleteMany({
       $or: [
-        { comicId: new ObjectId(req.params.id) },
-        { chapterId: { $in: chapterIds } },
+        { novelId: new ObjectId(req.params.id) },
+        { novelChapterId: { $in: chapterIds } },
       ],
     });
 
     res.json({
       success: true,
-      message: "Comic, chapters, and comments deleted successfully",
+      message: "Novel, chapters, and comments deleted successfully",
     });
   } catch (error) {
-    console.error("Delete comic error:", error);
+    console.error("Delete novel error:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to delete comic",
+      message: "Failed to delete novel",
       error: error.message,
     });
   }
 });
 
-// @route   POST /api2/webtoon/comic/:comicId/chapter
-// @desc    Add chapter to comic
+// @route   POST /api2/novel/:novelId/chapter
+// @desc    Add chapter to novel
 // @access  Private
-router.post("/comic/:comicId/chapter", authenticate, async (req, res) => {
+router.post("/:novelId/chapter", authenticate, async (req, res) => {
   try {
     const { ObjectId } = require("mongodb");
-    const { chapterNumber, title, images } = req.body;
-    const { comicId } = req.params;
+    const { chapterNumber, title, content } = req.body;
+    const { novelId } = req.params;
 
-    if (!chapterNumber || !title || !images || !Array.isArray(images)) {
+    // Validate ObjectId
+    if (!isValidObjectId(novelId)) {
       return res.status(400).json({
         success: false,
-        message: "Chapter number, title, and images array are required",
+        message: "Invalid novel ID format",
+        error: "ID must be a valid 24-character hex string",
       });
     }
 
-    if (images.length === 0) {
+    if (!chapterNumber || !title || !content) {
       return res.status(400).json({
         success: false,
-        message: "At least one image is required",
+        message: "Chapter number, title, and content are required",
       });
     }
 
-    // Check if comic exists
-    const comicCollection = req.db.collection("Comic");
-    const comic = await comicCollection.findOne({
-      _id: new ObjectId(comicId),
+    if (content.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Chapter content cannot be empty",
+      });
+    }
+
+    // Check if novel exists
+    const novelCollection = req.db.collection("Novel");
+    const novel = await novelCollection.findOne({
+      _id: new ObjectId(novelId),
     });
 
-    if (!comic) {
+    if (!novel) {
       return res.status(404).json({
         success: false,
-        message: "Comic not found",
+        message: "Novel not found",
       });
     }
 
-    const chapterCollection = req.db.collection("Chapter");
+    const chapterCollection = req.db.collection("NovelChapter");
 
     // Check if chapter number already exists
     const existingChapter = await chapterCollection.findOne({
-      comicId: new ObjectId(comicId),
+      novelId: new ObjectId(novelId),
       chapterNumber,
     });
 
     if (existingChapter) {
       return res.status(400).json({
         success: false,
-        message: "Chapter number already exists for this comic",
+        message: "Chapter number already exists for this novel",
       });
     }
 
     const chapter = {
-      comicId: new ObjectId(comicId),
+      novelId: new ObjectId(novelId),
       chapterNumber,
       title,
-      images,
+      content: content.trim(),
       views: 0,
       likes: 0,
       subdomain: req.subdomain,
@@ -276,79 +335,26 @@ router.post("/comic/:comicId/chapter", authenticate, async (req, res) => {
   }
 });
 
-// @route   GET /api2/webtoon/comic/:id
-// @desc    Get single comic
+// @route   GET /api2/novel/:novelId/chapters
+// @desc    Get all chapters of a novel
 // @access  Public
-// NOTE: This route must come AFTER /comic/:comicId/chapters to avoid route conflicts
-router.get("/comic/:id", async (req, res) => {
-  try {
-    const { ObjectId } = require("mongodb");
-
-    // Reject reserved words
-    if (RESERVED_WORDS.includes(req.params.id.toLowerCase())) {
-      return res.status(404).json({
-        success: false,
-        message: "Not found",
-        error: `"${req.params.id}" is a reserved word and cannot be used as an ID`,
-      });
-    }
-
-    // Validate ObjectId
-    if (!isValidObjectId(req.params.id)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid comic ID format",
-        error: "ID must be a valid 24-character hex string",
-      });
-    }
-
-    const collection = req.db.collection("Comic");
-
-    const comic = await collection.findOne({
-      _id: new ObjectId(req.params.id),
-    });
-
-    if (!comic) {
-      return res.status(404).json({
-        success: false,
-        message: "Comic not found",
-      });
-    }
-
-    res.json({
-      success: true,
-      comic,
-    });
-  } catch (error) {
-    console.error("Get comic error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to get comic",
-      error: error.message,
-    });
-  }
-});
-
-// @route   GET /api2/webtoon/comic/:comicId/chapters
-// @desc    Get all chapters of a comic
-// @access  Public
-router.get("/comic/:comicId/chapters", async (req, res) => {
+router.get("/:novelId/chapters", async (req, res) => {
   try {
     const { ObjectId } = require("mongodb");
 
     // Validate ObjectId
-    if (!isValidObjectId(req.params.comicId)) {
+    if (!isValidObjectId(req.params.novelId)) {
       return res.status(400).json({
         success: false,
-        message: "Invalid comic ID format",
+        message: "Invalid novel ID format",
         error: "ID must be a valid 24-character hex string",
       });
     }
 
-    const collection = req.db.collection("Chapter");
+    const collection = req.db.collection("NovelChapter");
 
     const chapters = await collection
-      .find({ comicId: new ObjectId(req.params.comicId) })
+      .find({ novelId: new ObjectId(req.params.novelId) })
       .sort({ chapterNumber: 1 })
       .toArray();
 
@@ -367,8 +373,8 @@ router.get("/comic/:comicId/chapters", async (req, res) => {
   }
 });
 
-// @route   GET /api2/webtoon/chapter/:id
-// @desc    Get single chapter
+// @route   GET /api2/novel/chapter/:id
+// @desc    Get single novel chapter
 // @access  Public
 router.get("/chapter/:id", async (req, res) => {
   try {
@@ -383,7 +389,7 @@ router.get("/chapter/:id", async (req, res) => {
       });
     }
 
-    const collection = req.db.collection("Chapter");
+    const collection = req.db.collection("NovelChapter");
 
     const chapter = await collection.findOne({
       _id: new ObjectId(req.params.id),
@@ -416,18 +422,35 @@ router.get("/chapter/:id", async (req, res) => {
   }
 });
 
-// @route   PUT /api2/webtoon/chapter/:id
-// @desc    Update chapter
+// @route   PUT /api2/novel/chapter/:id
+// @desc    Update novel chapter
 // @access  Private
 router.put("/chapter/:id", authenticate, async (req, res) => {
   try {
     const { ObjectId } = require("mongodb");
-    const { title, images } = req.body;
-    const collection = req.db.collection("Chapter");
+    const { title, content } = req.body;
+    const collection = req.db.collection("NovelChapter");
+
+    // Validate ObjectId
+    if (!isValidObjectId(req.params.id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid chapter ID format",
+        error: "ID must be a valid 24-character hex string",
+      });
+    }
 
     const updateFields = { updatedAt: new Date() };
     if (title) updateFields.title = title;
-    if (images && Array.isArray(images)) updateFields.images = images;
+    if (content) {
+      if (content.trim().length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Chapter content cannot be empty",
+        });
+      }
+      updateFields.content = content.trim();
+    }
 
     const result = await collection.findOneAndUpdate(
       { _id: new ObjectId(req.params.id) },
@@ -457,80 +480,23 @@ router.put("/chapter/:id", authenticate, async (req, res) => {
   }
 });
 
-// @route   PATCH /api2/webtoon/chapter/:id
-// @desc    Append images to existing chapter
-// @access  Private
-router.patch("/chapter/:id", authenticate, async (req, res) => {
-  try {
-    const { ObjectId } = require("mongodb");
-    const { images, append } = req.body;
-    const collection = req.db.collection("Chapter");
-
-    // Find the chapter first
-    const chapter = await collection.findOne({
-      _id: new ObjectId(req.params.id),
-    });
-
-    if (!chapter) {
-      return res.status(404).json({
-        success: false,
-        message: "Chapter not found",
-      });
-    }
-
-    let updateOperation;
-    if (append && Array.isArray(images)) {
-      // APPEND: Add new images to existing ones
-      updateOperation = {
-        $push: { images: { $each: images } },
-        $set: { updatedAt: new Date() },
-      };
-    } else if (Array.isArray(images)) {
-      // REPLACE: Replace all images
-      updateOperation = {
-        $set: {
-          images: images,
-          updatedAt: new Date(),
-        },
-      };
-    } else {
-      return res.status(400).json({
-        success: false,
-        message: "Images array is required",
-      });
-    }
-
-    const result = await collection.findOneAndUpdate(
-      { _id: new ObjectId(req.params.id) },
-      updateOperation,
-      { returnDocument: "after" }
-    );
-
-    res.json({
-      success: true,
-      message: append
-        ? `${images.length} images appended successfully`
-        : "Images updated successfully",
-      chapter: result,
-      totalImages: result.images.length,
-    });
-  } catch (error) {
-    console.error("Append images error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to append images",
-      error: error.message,
-    });
-  }
-});
-
-// @route   DELETE /api2/webtoon/chapter/:id
-// @desc    Delete chapter
+// @route   DELETE /api2/novel/chapter/:id
+// @desc    Delete novel chapter
 // @access  Private
 router.delete("/chapter/:id", authenticate, async (req, res) => {
   try {
     const { ObjectId } = require("mongodb");
-    const collection = req.db.collection("Chapter");
+    
+    // Validate ObjectId
+    if (!isValidObjectId(req.params.id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid chapter ID format",
+        error: "ID must be a valid 24-character hex string",
+      });
+    }
+
+    const collection = req.db.collection("NovelChapter");
 
     const result = await collection.deleteOne({
       _id: new ObjectId(req.params.id),
@@ -546,7 +512,7 @@ router.delete("/chapter/:id", authenticate, async (req, res) => {
     // Delete all comments on this chapter
     const commentCollection = req.db.collection("Comment");
     await commentCollection.deleteMany({
-      chapterId: new ObjectId(req.params.id),
+      novelChapterId: new ObjectId(req.params.id),
     });
 
     res.json({
@@ -563,6 +529,5 @@ router.delete("/chapter/:id", authenticate, async (req, res) => {
   }
 });
 
-// NOTE: Novel routes have been moved to /api2/novel - see routes/novel.js
-
 module.exports = router;
+

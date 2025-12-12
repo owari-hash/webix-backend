@@ -337,6 +337,7 @@ app.use(async (req, res, next) => {
 // Import routes
 const authRoutes = require("./routes/auth");
 const webtoonRoutes = require("./routes/webtoon");
+const novelRoutes = require("./routes/novel");
 const uploadRoutes = require("./routes/upload");
 const usersRoutes = require("./routes/users");
 const commentsRoutes = require("./routes/comments");
@@ -383,6 +384,7 @@ app.get("/metrics", async (req, res) => {
 // Mount routes with appropriate rate limiting
 app.use("/api2/auth", authLimiter, authRoutes); // Configurable: 50 req/15min (or disabled via DISABLE_AUTH_RATE_LIMIT=true)
 app.use("/api2/webtoon", publicLimiter, webtoonRoutes); // Lenient: 200 req/15min
+app.use("/api2/novel", publicLimiter, novelRoutes); // Lenient: 200 req/15min
 app.use("/api2/upload", uploadLimiter, uploadRoutes); // Medium: 10 req/15min
 app.use("/api2/users", defaultLimiter, usersRoutes); // Default: 100 req/15min
 app.use("/api2/comments", publicLimiter, commentsRoutes); // Lenient: 200 req/15min
