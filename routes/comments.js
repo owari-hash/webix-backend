@@ -59,6 +59,15 @@ router.post("/comic/:comicId", authenticate, async (req, res) => {
     // Invalidate cache for this comic's comments
     await deleteCachePattern(`comments:comic:${comicId}:*`);
 
+    // Track achievement: comment posted
+    try {
+      const { trackComment } = require("../utils/achievementService");
+      await trackComment(req.db, req.user.userId, req.subdomain);
+    } catch (achievementError) {
+      console.error("Error tracking comment achievement:", achievementError);
+      // Don't fail the request if achievement tracking fails
+    }
+
     res.status(201).json({
       success: true,
       message: "Comment posted successfully",
@@ -136,6 +145,15 @@ router.post("/novel/:novelId", authenticate, async (req, res) => {
 
     // Invalidate cache for this novel's comments
     await deleteCachePattern(`comments:novel:${novelId}:*`);
+
+    // Track achievement: comment posted
+    try {
+      const { trackComment } = require("../utils/achievementService");
+      await trackComment(req.db, req.user.userId, req.subdomain);
+    } catch (achievementError) {
+      console.error("Error tracking comment achievement:", achievementError);
+      // Don't fail the request if achievement tracking fails
+    }
 
     res.status(201).json({
       success: true,
@@ -215,6 +233,15 @@ router.post("/novel-chapter/:novelChapterId", authenticate, async (req, res) => 
     // Invalidate cache for this chapter's comments
     await deleteCachePattern(`comments:novel-chapter:${novelChapterId}:*`);
 
+    // Track achievement: comment posted
+    try {
+      const { trackComment } = require("../utils/achievementService");
+      await trackComment(req.db, req.user.userId, req.subdomain);
+    } catch (achievementError) {
+      console.error("Error tracking comment achievement:", achievementError);
+      // Don't fail the request if achievement tracking fails
+    }
+
     res.status(201).json({
       success: true,
       message: "Comment posted successfully",
@@ -288,6 +315,15 @@ router.post("/chapter/:chapterId", authenticate, async (req, res) => {
 
     // Invalidate cache for this chapter's comments
     await deleteCachePattern(`comments:chapter:${chapterId}:*`);
+
+    // Track achievement: comment posted
+    try {
+      const { trackComment } = require("../utils/achievementService");
+      await trackComment(req.db, req.user.userId, req.subdomain);
+    } catch (achievementError) {
+      console.error("Error tracking comment achievement:", achievementError);
+      // Don't fail the request if achievement tracking fails
+    }
 
     res.status(201).json({
       success: true,
@@ -1022,6 +1058,19 @@ router.post("/:id/like", authenticate, async (req, res) => {
       { _id: new ObjectId(id) },
       { $set: { likes: likesCount } }
     );
+
+    // Track achievement: like given and received
+    try {
+      const { trackLikeGiven, trackLikeReceived } = require("../utils/achievementService");
+      await trackLikeGiven(req.db, req.user.userId, req.subdomain, true);
+      // Track for comment author
+      if (comment.author && comment.author.toString() !== req.user.userId) {
+        await trackLikeReceived(req.db, comment.author, req.subdomain);
+      }
+    } catch (achievementError) {
+      console.error("Error tracking like achievement:", achievementError);
+      // Don't fail the request if achievement tracking fails
+    }
 
     res.json({
       success: true,

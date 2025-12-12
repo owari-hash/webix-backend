@@ -347,6 +347,8 @@ const notificationsRoutes = require("./routes/notifications");
 const qpayRoutes = require("./routes/qpay");
 const feedbackRoutes = require("./routes/feedback");
 const dashboardRoutes = require("./routes/dashboard");
+const achievementsRoutes = require("./routes/achievements");
+const activityTrackingRoutes = require("./routes/activityTracking");
 const { authenticate, authorize } = require("./middleware/auth");
 const {
   authLimiter,
@@ -395,6 +397,8 @@ app.use("/api2/notifications", defaultLimiter, notificationsRoutes); // Default:
 app.use("/api2/qpay", defaultLimiter, qpayRoutes); // Default: 100 req/15min
 app.use("/api2/feedback", defaultLimiter, feedbackRoutes); // Default: 100 req/15min
 app.use("/api2/dashboard", defaultLimiter, dashboardRoutes); // Default: 100 req/15min
+app.use("/api2/achievements", publicLimiter, achievementsRoutes); // Lenient: 200 req/15min
+app.use("/api2/activity", publicLimiter, activityTrackingRoutes); // Lenient: 200 req/15min
 
 // Welcome route - shows subdomain and database separation
 app.get("/", (req, res) => {

@@ -104,3 +104,4 @@ userSchema.statics.findByEmailAndSubdomain = async function (email, subdomain) {
 };
 
 module.exports = mongoose.model("User", userSchema);
+module.exports.schema = userSchema;
