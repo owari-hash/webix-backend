@@ -9,6 +9,19 @@ function isValidObjectId(id) {
   return /^[0-9a-fA-F]{24}$/.test(id);
 }
 
+// Reserved words that should not be treated as IDs
+const RESERVED_WORDS = [
+  "novels",
+  "comics",
+  "chapters",
+  "trending",
+  "new",
+  "completed",
+  "search",
+  "browse",
+  "categories",
+];
+
 // @route   POST /api2/webtoon/comic
 // @desc    Create a new comic
 // @access  Private
@@ -77,49 +90,6 @@ router.get("/comics", async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to get comics",
-      error: error.message,
-    });
-  }
-});
-
-// @route   GET /api2/webtoon/comic/:id
-// @desc    Get single comic
-// @access  Public
-router.get("/comic/:id", async (req, res) => {
-  try {
-    const { ObjectId } = require("mongodb");
-
-    // Validate ObjectId
-    if (!isValidObjectId(req.params.id)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid comic ID format",
-        error: "ID must be a valid 24-character hex string",
-      });
-    }
-
-    const collection = req.db.collection("Comic");
-
-    const comic = await collection.findOne({
-      _id: new ObjectId(req.params.id),
-    });
-
-    if (!comic) {
-      return res.status(404).json({
-        success: false,
-        message: "Comic not found",
-      });
-    }
-
-    res.json({
-      success: true,
-      comic,
-    });
-  } catch (error) {
-    console.error("Get comic error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to get comic",
       error: error.message,
     });
   }
@@ -301,6 +271,59 @@ router.post("/comic/:comicId/chapter", authenticate, async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to add chapter",
+      error: error.message,
+    });
+  }
+});
+
+// @route   GET /api2/webtoon/comic/:id
+// @desc    Get single comic
+// @access  Public
+// NOTE: This route must come AFTER /comic/:comicId/chapters to avoid route conflicts
+router.get("/comic/:id", async (req, res) => {
+  try {
+    const { ObjectId } = require("mongodb");
+
+    // Reject reserved words
+    if (RESERVED_WORDS.includes(req.params.id.toLowerCase())) {
+      return res.status(404).json({
+        success: false,
+        message: "Not found",
+        error: `"${req.params.id}" is a reserved word and cannot be used as an ID`,
+      });
+    }
+
+    // Validate ObjectId
+    if (!isValidObjectId(req.params.id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid comic ID format",
+        error: "ID must be a valid 24-character hex string",
+      });
+    }
+
+    const collection = req.db.collection("Comic");
+
+    const comic = await collection.findOne({
+      _id: new ObjectId(req.params.id),
+    });
+
+    if (!comic) {
+      return res.status(404).json({
+        success: false,
+        message: "Comic not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      comic,
+    });
+  } catch (error) {
+    console.error("Get comic error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to get comic",
       error: error.message,
     });
   }
