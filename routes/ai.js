@@ -23,15 +23,16 @@ function isNonEmptyString(v) {
  * Generate a cover image from a prompt (e.g. novel description).
  *
  * Preferred provider:
- * - Gemini / Imagen: set GEMINI_API_KEY
+ * - Gemini: set GEMINI_API_KEY
+ *   - Uses Gemini image generation models (gemini-2.5-flash-image, gemini-3-pro-image-preview)
  *
  * Optional:
- * - GEMINI_IMAGE_MODEL (default: "imagen-3.0-generate-002")
- * - GEMINI_IMAGE_SIZE (default: "1K")
+ * - GEMINI_IMAGE_MODEL (default: "gemini-2.5-flash-image")
  * - GEMINI_IMAGE_ASPECT_RATIO (default: "3:4")
+ * - GEMINI_IMAGE_SIZE (default: "1024")
  *
  * Fallback provider (optional):
- * - OpenAI: set OPENAI_API_KEY
+ * - OpenAI: set OPENAI_API_KEY (will be used if Gemini fails)
  */
 router.post("/cover", authenticate, async (req, res) => {
   try {
@@ -80,67 +81,98 @@ router.post("/cover", authenticate, async (req, res) => {
       "Vertical cover, centered subject, strong mood.",
     ].join("\n");
 
-    // Prefer Gemini/Imagen if GEMINI_API_KEY is present
+    // Use Gemini API for image generation if GEMINI_API_KEY is present
     if (geminiKey) {
-      const { GoogleGenAI } = require("@google/genai");
-      const ai = new GoogleGenAI({ apiKey: geminiKey });
+      try {
+        // Use Gemini's image generation models (gemini-2.5-flash-image or gemini-3-pro-image-preview)
+        const imageModel =
+          process.env.GEMINI_IMAGE_MODEL || "gemini-2.5-flash-image";
+        const aspectRatio = process.env.GEMINI_IMAGE_ASPECT_RATIO || "3:4";
 
-      const model = process.env.GEMINI_IMAGE_MODEL || "imagen-3.0-generate-002";
-      const imageSize = process.env.GEMINI_IMAGE_SIZE || "1K";
-      const aspectRatio = process.env.GEMINI_IMAGE_ASPECT_RATIO || "3:4";
+        // Use v1beta endpoint for Gemini image generation
+        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${imageModel}:generateContent?key=${geminiKey}`;
 
-      const response = await ai.models.generateImages({
-        model,
-        prompt: finalPrompt,
-        config: {
-          numberOfImages: 1,
-          imageSize,
-          aspectRatio,
-        },
-      });
-
-      const imageBytes = response?.generatedImages?.[0]?.image?.imageBytes;
-      const mimeType =
-        response?.generatedImages?.[0]?.image?.mimeType || "image/png";
-
-      if (!imageBytes) {
-        return res.status(500).json({
-          success: false,
-          message: "Gemini returned no image data",
+        const geminiResp = await fetch(geminiUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [
+                  {
+                    text: finalPrompt,
+                  },
+                ],
+              },
+            ],
+            generationConfig: {
+              responseModalities: ["IMAGE"],
+              imageConfig: {
+                aspectRatio: aspectRatio,
+                imageSize: process.env.GEMINI_IMAGE_SIZE || "1024",
+              },
+            },
+          }),
         });
+
+        const geminiData = await geminiResp.json();
+
+        if (!geminiResp.ok) {
+          console.error("Gemini API error:", geminiData);
+          throw new Error(
+            geminiData?.error?.message || "Gemini API request failed"
+          );
+        }
+
+        // Extract image data from response
+        const imagePart = geminiData?.candidates?.[0]?.content?.parts?.[0];
+        const imageBytes = imagePart?.inlineData?.data || imagePart?.imageBytes;
+
+        if (!imageBytes) {
+          throw new Error("No image data in Gemini response");
+        }
+
+        const buffer = Buffer.from(imageBytes, "base64");
+        const uploadsDir = ensureUploadsDir();
+        const filename = `ai-cover-${Date.now()}-${crypto
+          .randomBytes(6)
+          .toString("hex")}.png`;
+        const filepath = path.join(uploadsDir, filename);
+
+        fs.writeFileSync(filepath, buffer);
+
+        const fileUrl = `${req.protocol}://${req.get(
+          "host"
+        )}/uploads/${filename}`;
+
+        return res.json({
+          success: true,
+          message: "Cover image generated",
+          provider: "gemini",
+          file: {
+            filename,
+            path: `/uploads/${filename}`,
+            url: fileUrl,
+            size: buffer.length,
+            mimetype: "image/png",
+          },
+        });
+      } catch (geminiError) {
+        console.error("Gemini API error:", geminiError);
+        // If Gemini fails and no OpenAI fallback, return error
+        if (!openaiKey) {
+          return res.status(500).json({
+            success: false,
+            message: "Gemini image generation failed",
+            error:
+              geminiError.message ||
+              "Please check your GEMINI_API_KEY and model configuration",
+          });
+        }
+        // Fall through to OpenAI
       }
-
-      const buffer = Buffer.from(imageBytes, "base64");
-      const uploadsDir = ensureUploadsDir();
-      const ext =
-        mimeType === "image/jpeg"
-          ? "jpg"
-          : mimeType === "image/webp"
-          ? "webp"
-          : "png";
-      const filename = `ai-cover-${Date.now()}-${crypto
-        .randomBytes(6)
-        .toString("hex")}.${ext}`;
-      const filepath = path.join(uploadsDir, filename);
-
-      fs.writeFileSync(filepath, buffer);
-
-      const fileUrl = `${req.protocol}://${req.get(
-        "host"
-      )}/uploads/${filename}`;
-
-      return res.json({
-        success: true,
-        message: "Cover image generated",
-        provider: "gemini",
-        file: {
-          filename,
-          path: `/uploads/${filename}`,
-          url: fileUrl,
-          size: buffer.length,
-          mimetype: mimeType,
-        },
-      });
     }
 
     // Fallback: OpenAI (if configured)
