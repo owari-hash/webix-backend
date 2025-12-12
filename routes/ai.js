@@ -22,11 +22,16 @@ function isNonEmptyString(v) {
  * POST /api2/ai/cover
  * Generate a cover image from a prompt (e.g. novel description).
  *
- * Requires:
- * - OPENAI_API_KEY env var
+ * Preferred provider:
+ * - Gemini / Imagen: set GEMINI_API_KEY
  *
  * Optional:
- * - OPENAI_IMAGE_MODEL (default: "gpt-image-1")
+ * - GEMINI_IMAGE_MODEL (default: "imagen-3.0-generate-002")
+ * - GEMINI_IMAGE_SIZE (default: "1K")
+ * - GEMINI_IMAGE_ASPECT_RATIO (default: "3:4")
+ *
+ * Fallback provider (optional):
+ * - OpenAI: set OPENAI_API_KEY
  */
 router.post("/cover", authenticate, async (req, res) => {
   try {
@@ -48,12 +53,15 @@ router.post("/cover", authenticate, async (req, res) => {
       });
     }
 
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) {
+    const geminiKey = process.env.GEMINI_API_KEY;
+    const openaiKey = process.env.OPENAI_API_KEY;
+
+    if (!geminiKey && !openaiKey) {
       return res.status(501).json({
         success: false,
         message: "AI image generation is not configured",
-        error: "Missing OPENAI_API_KEY",
+        error:
+          "Missing GEMINI_API_KEY (preferred) or OPENAI_API_KEY (fallback)",
       });
     }
 
@@ -64,8 +72,6 @@ router.post("/cover", authenticate, async (req, res) => {
       });
     }
 
-    const model = process.env.OPENAI_IMAGE_MODEL || "gpt-image-1";
-
     // Help the model create a clean cover (no readable text).
     const finalPrompt = [
       trimmedPrompt,
@@ -74,17 +80,82 @@ router.post("/cover", authenticate, async (req, res) => {
       "Vertical cover, centered subject, strong mood.",
     ].join("\n");
 
+    // Prefer Gemini/Imagen if GEMINI_API_KEY is present
+    if (geminiKey) {
+      const { GoogleGenAI } = require("@google/genai");
+      const ai = new GoogleGenAI({ apiKey: geminiKey });
+
+      const model = process.env.GEMINI_IMAGE_MODEL || "imagen-3.0-generate-002";
+      const imageSize = process.env.GEMINI_IMAGE_SIZE || "1K";
+      const aspectRatio = process.env.GEMINI_IMAGE_ASPECT_RATIO || "3:4";
+
+      const response = await ai.models.generateImages({
+        model,
+        prompt: finalPrompt,
+        config: {
+          numberOfImages: 1,
+          imageSize,
+          aspectRatio,
+        },
+      });
+
+      const imageBytes = response?.generatedImages?.[0]?.image?.imageBytes;
+      const mimeType =
+        response?.generatedImages?.[0]?.image?.mimeType || "image/png";
+
+      if (!imageBytes) {
+        return res.status(500).json({
+          success: false,
+          message: "Gemini returned no image data",
+        });
+      }
+
+      const buffer = Buffer.from(imageBytes, "base64");
+      const uploadsDir = ensureUploadsDir();
+      const ext =
+        mimeType === "image/jpeg"
+          ? "jpg"
+          : mimeType === "image/webp"
+          ? "webp"
+          : "png";
+      const filename = `ai-cover-${Date.now()}-${crypto
+        .randomBytes(6)
+        .toString("hex")}.${ext}`;
+      const filepath = path.join(uploadsDir, filename);
+
+      fs.writeFileSync(filepath, buffer);
+
+      const fileUrl = `${req.protocol}://${req.get(
+        "host"
+      )}/uploads/${filename}`;
+
+      return res.json({
+        success: true,
+        message: "Cover image generated",
+        provider: "gemini",
+        file: {
+          filename,
+          path: `/uploads/${filename}`,
+          url: fileUrl,
+          size: buffer.length,
+          mimetype: mimeType,
+        },
+      });
+    }
+
+    // Fallback: OpenAI (if configured)
+    const model = process.env.OPENAI_IMAGE_MODEL || "gpt-image-1";
+
     const resp = await fetch("https://api.openai.com/v1/images/generations", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
+        Authorization: `Bearer ${openaiKey}`,
       },
       body: JSON.stringify({
         model,
         prompt: finalPrompt,
         size,
-        // We store as an uploaded file and return URL
         response_format: "b64_json",
       }),
     });
@@ -118,9 +189,10 @@ router.post("/cover", authenticate, async (req, res) => {
 
     const fileUrl = `${req.protocol}://${req.get("host")}/uploads/${filename}`;
 
-    res.json({
+    return res.json({
       success: true,
       message: "Cover image generated",
+      provider: "openai",
       file: {
         filename,
         path: `/uploads/${filename}`,
