@@ -3,6 +3,12 @@ const { authenticate } = require("../middleware/auth");
 
 const router = express.Router();
 
+// Helper function to validate ObjectId
+function isValidObjectId(id) {
+  if (!id || typeof id !== "string") return false;
+  return /^[0-9a-fA-F]{24}$/.test(id);
+}
+
 // @route   POST /api2/webtoon/comic
 // @desc    Create a new comic
 // @access  Private
@@ -82,6 +88,16 @@ router.get("/comics", async (req, res) => {
 router.get("/comic/:id", async (req, res) => {
   try {
     const { ObjectId } = require("mongodb");
+
+    // Validate ObjectId
+    if (!isValidObjectId(req.params.id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid comic ID format",
+        error: "ID must be a valid 24-character hex string",
+      });
+    }
+
     const collection = req.db.collection("Comic");
 
     const comic = await collection.findOne({
@@ -296,6 +312,16 @@ router.post("/comic/:comicId/chapter", authenticate, async (req, res) => {
 router.get("/comic/:comicId/chapters", async (req, res) => {
   try {
     const { ObjectId } = require("mongodb");
+
+    // Validate ObjectId
+    if (!isValidObjectId(req.params.comicId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid comic ID format",
+        error: "ID must be a valid 24-character hex string",
+      });
+    }
+
     const collection = req.db.collection("Chapter");
 
     const chapters = await collection
@@ -324,6 +350,16 @@ router.get("/comic/:comicId/chapters", async (req, res) => {
 router.get("/chapter/:id", async (req, res) => {
   try {
     const { ObjectId } = require("mongodb");
+
+    // Validate ObjectId
+    if (!isValidObjectId(req.params.id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid chapter ID format",
+        error: "ID must be a valid 24-character hex string",
+      });
+    }
+
     const collection = req.db.collection("Chapter");
 
     const chapter = await collection.findOne({
@@ -585,6 +621,16 @@ router.get("/novels", async (req, res) => {
 router.get("/novel/:id", async (req, res) => {
   try {
     const { ObjectId } = require("mongodb");
+
+    // Validate ObjectId
+    if (!isValidObjectId(req.params.id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid novel ID format",
+        error: "ID must be a valid 24-character hex string",
+      });
+    }
+
     const collection = req.db.collection("Novel");
 
     const novel = await collection.findOne({
@@ -799,6 +845,16 @@ router.post("/novel/:novelId/chapter", authenticate, async (req, res) => {
 router.get("/novel/:novelId/chapters", async (req, res) => {
   try {
     const { ObjectId } = require("mongodb");
+
+    // Validate ObjectId
+    if (!isValidObjectId(req.params.novelId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid novel ID format",
+        error: "ID must be a valid 24-character hex string",
+      });
+    }
+
     const collection = req.db.collection("NovelChapter");
 
     const chapters = await collection
@@ -827,6 +883,16 @@ router.get("/novel/:novelId/chapters", async (req, res) => {
 router.get("/novel-chapter/:id", async (req, res) => {
   try {
     const { ObjectId } = require("mongodb");
+
+    // Validate ObjectId
+    if (!isValidObjectId(req.params.id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid chapter ID format",
+        error: "ID must be a valid 24-character hex string",
+      });
+    }
+
     const collection = req.db.collection("NovelChapter");
 
     const chapter = await collection.findOne({
