@@ -25,6 +25,8 @@ const RESERVED_WORDS = [
 // @route   POST /api2/webtoon/comic
 // @desc    Create a new comic
 // @access  Private
+const { notifyAdmins } = require("../utils/notifications");
+
 router.post("/comic", authenticate, async (req, res) => {
   try {
     const { title, description, coverImage, genre, status } = req.body;
@@ -53,6 +55,23 @@ router.post("/comic", authenticate, async (req, res) => {
     };
 
     const result = await collection.insertOne(comic);
+
+    // Notify admins that a new comic was created
+    try {
+      await notifyAdmins({
+        tenantDb: req.db,
+        subdomain: req.subdomain,
+        type: "content_new_comic",
+        title: "Шинэ манхва нэмэгдлээ",
+        message: comic.title,
+        metadata: {
+          comicId: result.insertedId,
+        },
+      });
+    } catch (notifError) {
+      console.error("New comic notification error:", notifError);
+      // Do not fail the main request on notification error
+    }
 
     res.status(201).json({
       success: true,

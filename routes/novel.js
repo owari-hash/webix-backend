@@ -12,6 +12,8 @@ function isValidObjectId(id) {
 // @route   POST /api2/novel
 // @desc    Create a new novel
 // @access  Private
+const { notifyAdmins } = require("../utils/notifications");
+
 router.post("/", authenticate, async (req, res) => {
   try {
     const { title, description, coverImage, genre, status } = req.body;
@@ -40,6 +42,23 @@ router.post("/", authenticate, async (req, res) => {
     };
 
     const result = await collection.insertOne(novel);
+
+    // Notify admins that a new novel was created
+    try {
+      await notifyAdmins({
+        tenantDb: req.db,
+        subdomain: req.subdomain,
+        type: "content_new_novel",
+        title: "Шинэ новел нэмэгдлээ",
+        message: novel.title,
+        metadata: {
+          novelId: result.insertedId,
+        },
+      });
+    } catch (notifError) {
+      console.error("New novel notification error:", notifError);
+      // Do not fail the main request on notification error
+    }
 
     res.status(201).json({
       success: true,

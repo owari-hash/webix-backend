@@ -46,7 +46,29 @@ async function createNotification({
     };
 
     const result = await notificationsCollection.insertOne(notification);
-    return { ...notification, _id: result.insertedId };
+    const createdNotification = { ...notification, _id: result.insertedId };
+
+    // Emit real-time notification via Socket.IO
+    try {
+      const io = require("../index").io;
+      if (io) {
+        io.to(`user:${userIdObj.toString()}`).emit("notification", {
+          id: createdNotification._id.toString(),
+          type: type,
+          title: title,
+          message: message,
+          is_read: false,
+          createdAt: createdNotification.createdAt,
+          metadata: metadata,
+        });
+        console.log(`📡 Socket notification sent to user: ${userIdObj.toString()}`);
+      }
+    } catch (socketError) {
+      console.error("Socket.IO error (non-fatal):", socketError.message);
+      // Don't fail notification creation if socket fails
+    }
+
+    return createdNotification;
   } catch (error) {
     console.error("Create notification error:", error);
     throw error;

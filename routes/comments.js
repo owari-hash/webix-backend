@@ -343,6 +343,8 @@ router.post("/chapter/:chapterId", authenticate, async (req, res) => {
   }
 });
 
+const { notifyUser } = require("../utils/notifications");
+
 // @route   POST /api2/comments/:commentId/reply
 // @desc    Reply to a comment
 // @access  Private
@@ -397,6 +399,34 @@ router.post("/:commentId/reply", authenticate, async (req, res) => {
     };
 
     const result = await commentCollection.insertOne(reply);
+
+    // Notify parent comment author if different from replier
+    try {
+      if (
+        parentComment.author &&
+        parentComment.author.toString() !== req.user.userId
+      ) {
+        await notifyUser({
+          tenantDb: req.db,
+          userId: parentComment.author,
+          subdomain: req.subdomain,
+          type: "comment_reply",
+          title: "Таны сэтгэгдэлд хариу бичлээ",
+          message: reply.content.slice(0, 120),
+          metadata: {
+            parentCommentId: parentComment._id,
+            replyId: result.insertedId,
+            comicId: parentComment.comicId || null,
+            chapterId: parentComment.chapterId || null,
+            novelId: parentComment.novelId || null,
+            novelChapterId: parentComment.novelChapterId || null,
+          },
+        });
+      }
+    } catch (notifError) {
+      console.error("Reply notification error:", notifError);
+      // Do not fail the main request on notification error
+    }
 
     res.status(201).json({
       success: true,
@@ -1059,17 +1089,30 @@ router.post("/:id/like", authenticate, async (req, res) => {
       { $set: { likes: likesCount } }
     );
 
-    // Track achievement: like given and received
+    // Track achievement: like given and received + notify comment author
     try {
       const { trackLikeGiven, trackLikeReceived } = require("../utils/achievementService");
       await trackLikeGiven(req.db, req.user.userId, req.subdomain, true);
       // Track for comment author
       if (comment.author && comment.author.toString() !== req.user.userId) {
         await trackLikeReceived(req.db, comment.author, req.subdomain);
+
+        // Send notification to comment author
+        await notifyUser({
+          tenantDb: req.db,
+          userId: comment.author,
+          subdomain: req.subdomain,
+          type: "comment_like",
+          title: "Таны сэтгэгдэлд like дарлаа",
+          message: comment.content.slice(0, 120),
+          metadata: {
+            commentId: comment._id,
+          },
+        });
       }
     } catch (achievementError) {
-      console.error("Error tracking like achievement:", achievementError);
-      // Don't fail the request if achievement tracking fails
+      console.error("Error tracking like/notification achievement:", achievementError);
+      // Don't fail the request if achievement tracking fails or notification fails
     }
 
     res.json({

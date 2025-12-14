@@ -894,8 +894,79 @@ app.use((err, req, res, next) => {
   });
 });
 
+// Initialize Socket.IO
+const { Server } = require("socket.io");
+const { createServer } = require("http");
+const httpServer = createServer(app);
+
+const io = new Server(httpServer, {
+  cors: {
+    origin: function (origin, callback) {
+      // Allow requests with no origin (like mobile apps)
+      if (!origin) return callback(null, true);
+
+      const allowedOrigins = [
+        "http://localhost:8002",
+        "http://localhost:3000",
+        "https://anzaidev.fun",
+        "https://www.anzaidev.fun",
+      ];
+
+      if (allowedOrigins.indexOf(origin) !== -1) {
+        return callback(null, true);
+      }
+
+      if (
+        origin.match(/^http:\/\/[a-zA-Z0-9-]+\.localhost:8002$/) ||
+        origin.match(/^https:\/\/[a-zA-Z0-9-]+\.anzaidev\.fun$/)
+      ) {
+        return callback(null, true);
+      }
+
+      callback(new Error("Not allowed by CORS"));
+    },
+    credentials: true,
+    methods: ["GET", "POST"],
+  },
+});
+
+// Socket.IO authentication middleware
+io.use(async (socket, next) => {
+  try {
+    const token = socket.handshake.auth.token;
+    if (!token) {
+      return next(new Error("Authentication error: No token provided"));
+    }
+
+    const jwt = require("jsonwebtoken");
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || "your-secret-key");
+    
+    socket.userId = decoded.userId;
+    socket.subdomain = socket.handshake.auth.subdomain || decoded.subdomain;
+    next();
+  } catch (error) {
+    next(new Error("Authentication error: Invalid token"));
+  }
+});
+
+// Socket.IO connection handler
+io.on("connection", (socket) => {
+  console.log(`🔌 Socket connected: ${socket.id} (User: ${socket.userId}, Subdomain: ${socket.subdomain})`);
+
+  // Join user-specific room
+  socket.join(`user:${socket.userId}`);
+  socket.join(`subdomain:${socket.subdomain}`);
+
+  socket.on("disconnect", () => {
+    console.log(`🔌 Socket disconnected: ${socket.id}`);
+  });
+});
+
+// Export io for use in other files
+module.exports.io = io;
+
 // Start server
-const server = app.listen(port, () => {
+const server = httpServer.listen(port, () => {
   console.log(`🚀 Server running on port ${port}`);
   console.log(`📊 MongoDB base URI: ${MONGODB_BASE_URI}`);
   console.log(
