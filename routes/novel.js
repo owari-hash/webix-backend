@@ -531,3 +531,4 @@ router.delete("/chapter/:id", authenticate, async (req, res) => {
 
 module.exports = router;
 
+

@@ -89,12 +89,178 @@ router.post("/register", async (req, res) => {
   }
 });
 
+// @route   POST /api2/auth/check-email
+// @desc    Check which organizations a user belongs to by email
+// @access  Public
+router.post("/check-email", async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: "Email is required",
+      });
+    }
+
+    const mongoose = require("mongoose");
+    const MONGODB_BASE_URI =
+      process.env.MONGODB_URI || "mongodb://localhost:27017";
+
+    // Get all databases that start with webix_ or webix-
+    let adminConn;
+    try {
+      adminConn = await mongoose.createConnection(`${MONGODB_BASE_URI}/admin`);
+      const client = adminConn.getClient();
+      const adminDb = client.db("admin");
+      const dbListResult = await adminDb.admin().listDatabases();
+
+      const webixDbs = dbListResult.databases
+        .filter(
+          (db) => db.name.startsWith("webix_") || db.name.startsWith("webix-")
+        )
+        .map((db) => db.name);
+
+      const organizations = [];
+
+      // Connect to central database once for organization lookups
+      const centralDbName = process.env.CENTRAL_DB_NAME || "webix-udirdlaga";
+      let centralConn;
+      try {
+        centralConn = await mongoose.createConnection(
+          `${MONGODB_BASE_URI}/${centralDbName}`
+        );
+      } catch (err) {
+        console.error("Failed to connect to central database:", err.message);
+      }
+
+      // Check each database for the user
+      for (const dbName of webixDbs) {
+        try {
+          const dbConn = await mongoose.createConnection(
+            `${MONGODB_BASE_URI}/${dbName}`
+          );
+
+          // Try both collection names
+          let user = await dbConn.collection("User").findOne({
+            email: {
+              $regex: new RegExp(
+                `^${email.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`,
+                "i"
+              ),
+            },
+          });
+
+          if (!user) {
+            user = await dbConn.collection("users").findOne({
+              email: {
+                $regex: new RegExp(
+                  `^${email.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`,
+                  "i"
+                ),
+              },
+            });
+          }
+
+          if (user) {
+            // Extract subdomain from database name
+            const subdomain = dbName.replace(/^webix[_-]/, "");
+
+            // Get organization info from central database
+            if (centralConn) {
+              try {
+                const org = await centralConn
+                  .collection("Organization")
+                  .findOne({ subdomain });
+
+                if (org) {
+                  organizations.push({
+                    subdomain: subdomain,
+                    name: org.name || subdomain,
+                    displayName: org.displayName || org.name || subdomain,
+                    logo: org.logo || null,
+                  });
+                } else {
+                  // If org not found in central DB, still include it
+                  organizations.push({
+                    subdomain: subdomain,
+                    name: subdomain,
+                    displayName: subdomain,
+                    logo: null,
+                  });
+                }
+              } catch (err) {
+                // If can't get org info, still include the subdomain
+                organizations.push({
+                  subdomain: subdomain,
+                  name: subdomain,
+                  displayName: subdomain,
+                  logo: null,
+                });
+              }
+            } else {
+              // If central DB connection failed, still include the subdomain
+              organizations.push({
+                subdomain: subdomain,
+                name: subdomain,
+                displayName: subdomain,
+                logo: null,
+              });
+            }
+          }
+
+          await dbConn.close();
+        } catch (err) {
+          console.error(`Error checking database ${dbName}:`, err.message);
+          // Continue to next database
+        }
+      }
+
+      // Close central database connection
+      if (centralConn) {
+        await centralConn.close();
+      }
+
+      await adminConn.close();
+
+      if (organizations.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: "No account found with this email",
+        });
+      }
+
+      res.status(200).json({
+        success: true,
+        email: email,
+        organizations: organizations,
+        count: organizations.length,
+      });
+    } catch (error) {
+      if (adminConn) await adminConn.close();
+      throw error;
+    }
+  } catch (error) {
+    console.error("Check email error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to check email",
+      error: error.message,
+    });
+  }
+});
+
 // @route   POST /api2/auth/login
 // @desc    Login user (supports both old and new User schema)
 // @access  Public
 router.post("/login", async (req, res) => {
   try {
-    const { email, password, username } = req.body;
+    const {
+      email,
+      password,
+      username,
+      subdomain: requestedSubdomain,
+    } = req.body;
 
     // Validation
     if ((!email && !username) || !password) {
@@ -104,8 +270,8 @@ router.post("/login", async (req, res) => {
       });
     }
 
-    // Get subdomain from request
-    const subdomain = req.subdomain;
+    // Get subdomain from request body (for multi-org login) or from request header
+    const subdomain = requestedSubdomain || req.subdomain;
 
     // Helper function to escape regex special characters
     const escapeRegex = (str) => {
@@ -149,11 +315,24 @@ router.post("/login", async (req, res) => {
       });
     }
 
-    // Optional: Check subdomain if user has subdomain field
+    // Check subdomain if user has subdomain field
     if (user.subdomain && user.subdomain !== subdomain) {
       return res.status(401).json({
         success: false,
         message: "User not found for this subdomain",
+      });
+    }
+
+    // If user doesn't have subdomain field but we're checking a specific subdomain,
+    // ensure the user exists in the correct database context
+    if (
+      !user.subdomain &&
+      requestedSubdomain &&
+      user.subdomain !== requestedSubdomain
+    ) {
+      return res.status(401).json({
+        success: false,
+        message: "User not found for this organization",
       });
     }
 
@@ -235,7 +414,7 @@ router.get("/me", authenticate, async (req, res) => {
   try {
     const { ObjectId } = require("mongodb");
     const userId = new ObjectId(req.user.userId);
-    
+
     // Get user from DB
     let collection = req.db.collection("users");
     let user = await collection.findOne({ _id: userId });

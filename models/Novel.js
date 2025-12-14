@@ -52,3 +52,4 @@ novelSchema.index({ subdomain: 1, title: 1 });
 
 module.exports = mongoose.model("Novel", novelSchema);
 
+
