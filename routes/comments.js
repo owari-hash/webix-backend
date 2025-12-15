@@ -68,12 +68,21 @@ router.post("/comic/:comicId", authenticate, async (req, res) => {
       // Don't fail the request if achievement tracking fails
     }
 
+    // Populate author before returning
+    const populatedAuthor = await populateAuthor(req.db, new ObjectId(req.user.userId));
+
     res.status(201).json({
       success: true,
       message: "Comment posted successfully",
       comment: {
         id: result.insertedId,
         ...comment,
+        author: populatedAuthor || {
+          id: req.user.userId,
+          name: req.user.email || 'User',
+          email: req.user.email || '',
+          avatar: null,
+        },
       },
     });
   } catch (error) {
@@ -155,12 +164,21 @@ router.post("/novel/:novelId", authenticate, async (req, res) => {
       // Don't fail the request if achievement tracking fails
     }
 
+    // Populate author before returning
+    const populatedAuthor = await populateAuthor(req.db, new ObjectId(req.user.userId));
+
     res.status(201).json({
       success: true,
       message: "Comment posted successfully",
       comment: {
         id: result.insertedId,
         ...comment,
+        author: populatedAuthor || {
+          id: req.user.userId,
+          name: req.user.email || 'User',
+          email: req.user.email || '',
+          avatar: null,
+        },
       },
     });
   } catch (error) {
@@ -242,12 +260,21 @@ router.post("/novel-chapter/:novelChapterId", authenticate, async (req, res) => 
       // Don't fail the request if achievement tracking fails
     }
 
+    // Populate author before returning
+    const populatedAuthor = await populateAuthor(req.db, new ObjectId(req.user.userId));
+
     res.status(201).json({
       success: true,
       message: "Comment posted successfully",
       comment: {
         id: result.insertedId,
         ...comment,
+        author: populatedAuthor || {
+          id: req.user.userId,
+          name: req.user.email || 'User',
+          email: req.user.email || '',
+          avatar: null,
+        },
       },
     });
   } catch (error) {
@@ -325,12 +352,21 @@ router.post("/chapter/:chapterId", authenticate, async (req, res) => {
       // Don't fail the request if achievement tracking fails
     }
 
+    // Populate author before returning
+    const populatedAuthor = await populateAuthor(req.db, new ObjectId(req.user.userId));
+
     res.status(201).json({
       success: true,
       message: "Comment posted successfully",
       comment: {
         id: result.insertedId,
         ...comment,
+        author: populatedAuthor || {
+          id: req.user.userId,
+          name: req.user.email || 'User',
+          email: req.user.email || '',
+          avatar: null,
+        },
       },
     });
   } catch (error) {
@@ -428,12 +464,21 @@ router.post("/:commentId/reply", authenticate, async (req, res) => {
       // Do not fail the main request on notification error
     }
 
+    // Populate author before returning
+    const populatedAuthor = await populateAuthor(req.db, new ObjectId(req.user.userId));
+
     res.status(201).json({
       success: true,
       message: "Reply posted successfully",
       reply: {
         id: result.insertedId,
         ...reply,
+        author: populatedAuthor || {
+          id: req.user.userId,
+          name: req.user.email || 'User',
+          email: req.user.email || '',
+          avatar: null,
+        },
       },
     });
   } catch (error) {

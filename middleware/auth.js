@@ -37,7 +37,9 @@ const authenticate = async (req, res, next) => {
 
       // Use the existing database connection for the requested subdomain (already set by database middleware)
       if (!req.db) {
-        console.error("❌ Database connection not available for subdomain check");
+        console.error(
+          "❌ Database connection not available for subdomain check"
+        );
         return res.status(500).json({
           success: false,
           message: "Database connection error",
