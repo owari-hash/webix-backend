@@ -29,14 +29,72 @@ const authenticate = async (req, res, next) => {
     // Verify token
     const decoded = jwt.verify(token, JWT_SECRET);
 
-    // Check if subdomain matches
+    // Check if subdomain matches - if not, verify user exists in requested subdomain
     if (decoded.subdomain !== req.subdomain) {
-      return res.status(403).json({
-        success: false,
-        message: "Token is not valid for this subdomain",
-      });
+      console.log(
+        `🔄 Token subdomain (${decoded.subdomain}) doesn't match request subdomain (${req.subdomain}). Checking if user exists in requested subdomain...`
+      );
+
+      // Use the existing database connection for the requested subdomain (already set by database middleware)
+      if (!req.db) {
+        console.error("❌ Database connection not available for subdomain check");
+        return res.status(500).json({
+          success: false,
+          message: "Database connection error",
+        });
+      }
+
+      try {
+        // Check if user exists in requested subdomain's database
+        const usersCollection = req.db.collection("users");
+        const UserCollection = req.db.collection("User");
+
+        // Try to find user by email (case-insensitive)
+        const emailRegex = new RegExp(
+          `^${decoded.email.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`,
+          "i"
+        );
+        let user = await usersCollection.findOne({ email: emailRegex });
+
+        if (!user) {
+          user = await UserCollection.findOne({ email: emailRegex });
+        }
+
+        if (!user) {
+          console.log(
+            `❌ User ${decoded.email} not found in subdomain ${req.subdomain}`
+          );
+          return res.status(403).json({
+            success: false,
+            message: "Token is not valid for this subdomain",
+          });
+        }
+
+        console.log(
+          `✅ User ${decoded.email} found in subdomain ${req.subdomain}. Allowing token sharing.`
+        );
+
+        // User exists in requested subdomain - allow token sharing
+        // Update req.user with requested subdomain and user's actual ID in this subdomain
+        req.user = {
+          userId: user._id.toString(), // Use the user's ID from the requested subdomain
+          email: decoded.email,
+          subdomain: req.subdomain, // Use requested subdomain, not token's subdomain
+          role: user.role || decoded.role, // Use role from requested subdomain if available
+        };
+
+        next();
+        return;
+      } catch (dbError) {
+        console.error("Error checking user in requested subdomain:", dbError);
+        return res.status(403).json({
+          success: false,
+          message: "Token is not valid for this subdomain",
+        });
+      }
     }
 
+    // Subdomain matches - proceed normally
     // Attach user info to request
     req.user = {
       userId: decoded.userId,
