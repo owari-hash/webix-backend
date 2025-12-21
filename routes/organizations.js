@@ -449,11 +449,22 @@ router.put("/:subdomain", authenticate, async (req, res) => {
       "settings",
       "logo", // Allow logo to be updated (can be base64 or file path)
       "bankAccount",
+      "premiumPlans",
     ];
 
     allowedFields.forEach((field) => {
       if (req.body[field] !== undefined) {
-        updateFields[field] = req.body[field];
+        // Handle premiumPlans - parse if it's a JSON string
+        if (field === "premiumPlans" && typeof req.body[field] === "string") {
+          try {
+            updateFields[field] = JSON.parse(req.body[field]);
+          } catch (e) {
+            console.error("Failed to parse premiumPlans:", e);
+            updateFields[field] = req.body[field];
+          }
+        } else {
+          updateFields[field] = req.body[field];
+        }
       }
     });
 
