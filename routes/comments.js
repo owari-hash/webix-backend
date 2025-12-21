@@ -670,6 +670,14 @@ router.get("/comic/:comicId", async (req, res) => {
 
     const comments = await commentCollection.aggregate(pipeline).toArray();
 
+    // Debug: Log first comment's author to see what we're getting
+    if (comments.length > 0 && comments[0].author) {
+      console.log(
+        "🔍 First comment author data (comic):",
+        JSON.stringify(comments[0].author, null, 2)
+      );
+    }
+
     const response = {
       success: true,
       count: comments.length,
@@ -759,6 +767,14 @@ router.get("/novel/:novelId", async (req, res) => {
     );
 
     const comments = await commentCollection.aggregate(pipeline).toArray();
+
+    // Debug: Log first comment's author to see what we're getting
+    if (comments.length > 0 && comments[0].author) {
+      console.log(
+        "🔍 First comment author data (comic):",
+        JSON.stringify(comments[0].author, null, 2)
+      );
+    }
 
     const response = {
       success: true,
@@ -850,6 +866,14 @@ router.get("/novel-chapter/:novelChapterId", async (req, res) => {
 
     const comments = await commentCollection.aggregate(pipeline).toArray();
 
+    // Debug: Log first comment's author to see what we're getting
+    if (comments.length > 0 && comments[0].author) {
+      console.log(
+        "🔍 First comment author data (comic):",
+        JSON.stringify(comments[0].author, null, 2)
+      );
+    }
+
     const response = {
       success: true,
       count: comments.length,
@@ -939,6 +963,14 @@ router.get("/chapter/:chapterId", async (req, res) => {
     );
 
     const comments = await commentCollection.aggregate(pipeline).toArray();
+
+    // Debug: Log first comment's author to see what we're getting
+    if (comments.length > 0 && comments[0].author) {
+      console.log(
+        "🔍 First comment author data (comic):",
+        JSON.stringify(comments[0].author, null, 2)
+      );
+    }
 
     const response = {
       success: true,

@@ -56,6 +56,7 @@ function buildCommentsAggregationPipeline(
     },
 
     // Stage 4: Lookup author information
+    // Try "User" collection first, then "users" as fallback
     {
       $lookup: {
         from: "User",
@@ -71,6 +72,36 @@ function buildCommentsAggregationPipeline(
           },
         ],
         as: "authorData",
+      },
+    },
+    // If User collection didn't find author, try users collection
+    {
+      $lookup: {
+        from: "users",
+        localField: "author",
+        foreignField: "_id",
+        pipeline: [
+          {
+            $project: {
+              name: 1,
+              email: 1,
+              avatar: 1,
+            },
+          },
+        ],
+        as: "usersAuthorData",
+      },
+    },
+    // Merge authorData from both collections
+    {
+      $addFields: {
+        authorData: {
+          $cond: {
+            if: { $gt: [{ $size: "$authorData" }, 0] },
+            then: "$authorData",
+            else: "$usersAuthorData",
+          },
+        },
       },
     },
 
@@ -107,6 +138,36 @@ function buildCommentsAggregationPipeline(
                 },
               ],
               as: "authorData",
+            },
+          },
+          // Try users collection as fallback
+          {
+            $lookup: {
+              from: "users",
+              localField: "author",
+              foreignField: "_id",
+              pipeline: [
+                {
+                  $project: {
+                    name: 1,
+                    email: 1,
+                    avatar: 1,
+                  },
+                },
+              ],
+              as: "usersAuthorData",
+            },
+          },
+          // Merge authorData from both collections
+          {
+            $addFields: {
+              authorData: {
+                $cond: {
+                  if: { $gt: [{ $size: "$authorData" }, 0] },
+                  then: "$authorData",
+                  else: "$usersAuthorData",
+                },
+              },
             },
           },
           // Lookup likes for reply (if user is authenticated)
@@ -218,6 +279,7 @@ function buildCommentsAggregationPipeline(
           {
             $project: {
               authorData: 0,
+              usersAuthorData: 0,
               userLikes: 0,
             },
           },
@@ -363,6 +425,7 @@ function buildCommentsAggregationPipeline(
     {
       $project: {
         authorData: 0,
+        usersAuthorData: 0,
         replyCountData: 0,
         userLikes: 0,
       },
