@@ -607,8 +607,6 @@ router.delete("/chapter/:id", authenticate, async (req, res) => {
 // FAVORITES ENDPOINTS
 // ============================================================================
 
-const Favorite = require("../models/Favorite");
-const ReadingHistory = require("../models/ReadingHistory");
 const { ObjectId } = require("mongodb");
 
 // @route   GET /api2/webtoon/user/favorites
@@ -622,15 +620,17 @@ router.get("/user/favorites", authenticate, async (req, res) => {
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
-    // Get favorites
-    const favorites = await Favorite.find({
-      user: new ObjectId(userId),
-      subdomain: subdomain,
-    })
+    // Get favorites using native MongoDB collection
+    const favoritesCollection = req.db.collection("Favorite");
+    const favorites = await favoritesCollection
+      .find({
+        user: new ObjectId(userId),
+        subdomain: subdomain,
+      })
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(parseInt(limit))
-      .lean();
+      .toArray();
 
     // Populate comic and novel data
     const comicCollection = req.db.collection("Comic");
@@ -668,7 +668,7 @@ router.get("/user/favorites", authenticate, async (req, res) => {
       (fav) => (fav.type === "comic" && fav.comic) || (fav.type === "novel" && fav.novel)
     );
 
-    const total = await Favorite.countDocuments({
+    const total = await favoritesCollection.countDocuments({
       user: new ObjectId(userId),
       subdomain: subdomain,
     });
@@ -707,8 +707,9 @@ router.post("/user/favorites", authenticate, async (req, res) => {
       });
     }
 
-    // Check if already favorited
-    const existing = await Favorite.findOne({
+    // Check if already favorited using native MongoDB collection
+    const favoritesCollection = req.db.collection("Favorite");
+    const existing = await favoritesCollection.findOne({
       user: new ObjectId(userId),
       subdomain: subdomain,
       ...(comicId ? { comicId: new ObjectId(comicId) } : { novelId: new ObjectId(novelId) }),
@@ -723,18 +724,21 @@ router.post("/user/favorites", authenticate, async (req, res) => {
     }
 
     // Create favorite
-    const favorite = new Favorite({
+    const favorite = {
       user: new ObjectId(userId),
       subdomain: subdomain,
       ...(comicId ? { comicId: new ObjectId(comicId) } : { novelId: new ObjectId(novelId) }),
-    });
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
 
-    await favorite.save();
+    const result = await favoritesCollection.insertOne(favorite);
+    const insertedFavorite = await favoritesCollection.findOne({ _id: result.insertedId });
 
     res.status(201).json({
       success: true,
       message: "Added to favorites",
-      favorite,
+      favorite: insertedFavorite,
     });
   } catch (error) {
     console.error("Add favorite error:", error);
@@ -755,8 +759,9 @@ router.delete("/user/favorites/:id", authenticate, async (req, res) => {
     const subdomain = req.subdomain;
     const favoriteId = req.params.id;
 
-    const favorite = await Favorite.findOneAndDelete({
-      _id: favoriteId,
+    const favoritesCollection = req.db.collection("Favorite");
+    const favorite = await favoritesCollection.findOneAndDelete({
+      _id: new ObjectId(favoriteId),
       user: new ObjectId(userId),
       subdomain: subdomain,
     });
@@ -797,15 +802,17 @@ router.get("/user/history", authenticate, async (req, res) => {
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
-    // Get reading history
-    const history = await ReadingHistory.find({
-      user: new ObjectId(userId),
-      subdomain: subdomain,
-    })
+    // Get reading history using native MongoDB collection
+    const readingHistoryCollection = req.db.collection("ReadingHistory");
+    const history = await readingHistoryCollection
+      .find({
+        user: new ObjectId(userId),
+        subdomain: subdomain,
+      })
       .sort({ lastReadAt: -1 })
       .skip(skip)
       .limit(parseInt(limit))
-      .lean();
+      .toArray();
 
     // Populate comic and novel data
     const comicCollection = req.db.collection("Comic");
@@ -859,7 +866,7 @@ router.get("/user/history", authenticate, async (req, res) => {
       (item) => (item.type === "comic" && item.comic) || (item.type === "novel" && item.novel)
     );
 
-    const total = await ReadingHistory.countDocuments({
+    const total = await readingHistoryCollection.countDocuments({
       user: new ObjectId(userId),
       subdomain: subdomain,
     });
@@ -898,8 +905,9 @@ router.post("/user/history", authenticate, async (req, res) => {
       });
     }
 
-    // Find existing history entry
-    const existing = await ReadingHistory.findOne({
+    // Find existing history entry using native MongoDB collection
+    const readingHistoryCollection = req.db.collection("ReadingHistory");
+    const existing = await readingHistoryCollection.findOne({
       user: new ObjectId(userId),
       subdomain: subdomain,
       ...(comicId ? { comicId: new ObjectId(comicId) } : { novelId: new ObjectId(novelId) }),
@@ -907,21 +915,30 @@ router.post("/user/history", authenticate, async (req, res) => {
 
     if (existing) {
       // Update existing entry
-      existing.lastReadAt = new Date();
-      if (chapterId) existing.chapterId = new ObjectId(chapterId);
-      if (novelChapterId) existing.novelChapterId = new ObjectId(novelChapterId);
-      if (progress !== undefined) existing.progress = progress;
-      await existing.save();
+      const updateData = {
+        lastReadAt: new Date(),
+        updatedAt: new Date(),
+      };
+      if (chapterId) updateData.chapterId = new ObjectId(chapterId);
+      if (novelChapterId) updateData.novelChapterId = new ObjectId(novelChapterId);
+      if (progress !== undefined) updateData.progress = progress;
+
+      await readingHistoryCollection.updateOne(
+        { _id: existing._id },
+        { $set: updateData }
+      );
+
+      const updatedHistory = await readingHistoryCollection.findOne({ _id: existing._id });
 
       return res.json({
         success: true,
         message: "Reading history updated",
-        history: existing,
+        history: updatedHistory,
       });
     }
 
     // Create new history entry
-    const history = new ReadingHistory({
+    const history = {
       user: new ObjectId(userId),
       subdomain: subdomain,
       ...(comicId ? { comicId: new ObjectId(comicId) } : { novelId: new ObjectId(novelId) }),
@@ -929,14 +946,17 @@ router.post("/user/history", authenticate, async (req, res) => {
       ...(novelChapterId ? { novelChapterId: new ObjectId(novelChapterId) } : {}),
       progress: progress || 0,
       lastReadAt: new Date(),
-    });
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
 
-    await history.save();
+    const result = await readingHistoryCollection.insertOne(history);
+    const insertedHistory = await readingHistoryCollection.findOne({ _id: result.insertedId });
 
     res.status(201).json({
       success: true,
       message: "Reading history added",
-      history,
+      history: insertedHistory,
     });
   } catch (error) {
     console.error("Add reading history error:", error);
@@ -957,8 +977,9 @@ router.delete("/user/history/:id", authenticate, async (req, res) => {
     const subdomain = req.subdomain;
     const historyId = req.params.id;
 
-    const history = await ReadingHistory.findOneAndDelete({
-      _id: historyId,
+    const readingHistoryCollection = req.db.collection("ReadingHistory");
+    const history = await readingHistoryCollection.findOneAndDelete({
+      _id: new ObjectId(historyId),
       user: new ObjectId(userId),
       subdomain: subdomain,
     });
