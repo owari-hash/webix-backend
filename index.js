@@ -415,6 +415,7 @@ app.use("/api2/comments", publicLimiter, commentsRoutes); // Lenient: 200 req/15
 app.use("/api2/organizations", publicLimiter, organizationsRoutes); // Lenient: 200 req/15min
 app.use("/api2/notifications", defaultLimiter, notificationsRoutes); // Default: 100 req/15min
 app.use("/api2/qpay", defaultLimiter, qpayRoutes); // Default: 100 req/15min
+app.use("/api2/payment", defaultLimiter, qpayRoutes); // Payment routes (premium activation)
 app.use("/api2/feedback", defaultLimiter, feedbackRoutes); // Default: 100 req/15min
 app.use("/api2/dashboard", defaultLimiter, dashboardRoutes); // Default: 100 req/15min
 app.use("/api2/achievements", publicLimiter, achievementsRoutes); // Lenient: 200 req/15min

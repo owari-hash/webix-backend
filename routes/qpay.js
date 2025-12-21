@@ -1,6 +1,7 @@
 const express = require("express");
 const qpayService = require("../services/qpay");
 const { authenticate } = require("../middleware/auth");
+const { notifyUser } = require("../utils/notifications");
 
 const router = express.Router();
 
@@ -555,6 +556,28 @@ router.post("/payment/check", authenticate, async (req, res) => {
                 console.log(
                   `✅ Premium activated for user: ${userEmail} (from existing PAID invoice)`
                 );
+
+                // Send notification to user about successful payment
+                try {
+                  await notifyUser({
+                    tenantDb,
+                    userId: user._id,
+                    subdomain: subdomain,
+                    type: "payment_success",
+                    title: "Төлбөр амжилттай төлөгдлөө!",
+                    message: `Таны Premium эрх идэвхжлээ. Одоо та бүх контентыг хязгааргүй хандах боломжтой.`,
+                    metadata: {
+                      invoice_id: invoice_id,
+                      amount: currentInvoice?.amount || 0,
+                      currency: currentInvoice?.currency || "MNT",
+                      plan: currentInvoice?.description?.includes("Жилийн") ? "yearly" : "monthly",
+                    },
+                  });
+                  console.log(`📧 Payment success notification sent to user: ${userEmail}`);
+                } catch (notifyError) {
+                  console.error("Failed to send payment notification:", notifyError);
+                  // Don't fail the request if notification fails
+                }
               } else {
                 console.log(
                   `⚠️ Failed to activate premium for user: ${userEmail}`
@@ -562,6 +585,26 @@ router.post("/payment/check", authenticate, async (req, res) => {
               }
             } else if (user && user.premium) {
               console.log(`ℹ️ User ${userEmail} already has premium activated`);
+
+              // Still send notification even if premium was already activated
+              try {
+                await notifyUser({
+                  tenantDb,
+                  userId: user._id,
+                  subdomain: subdomain,
+                  type: "payment_success",
+                  title: "Төлбөр амжилттай төлөгдлөө!",
+                  message: `Таны төлбөр амжилттай бүртгэгдлээ.`,
+                  metadata: {
+                    invoice_id: invoice_id,
+                    amount: currentInvoice?.amount || 0,
+                    currency: currentInvoice?.currency || "MNT",
+                  },
+                });
+                console.log(`📧 Payment success notification sent to user: ${userEmail}`);
+              } catch (notifyError) {
+                console.error("Failed to send payment notification:", notifyError);
+              }
             } else {
               console.log(`⚠️ User not found with email: ${userEmail}`);
             }
@@ -605,16 +648,14 @@ router.post("/payment/check", authenticate, async (req, res) => {
     // Extract payment status from QPay response
     // QPay API returns status in different possible fields
     // Priority: invoice_status (top level) > payment_status > status > nested fields
-    let paymentStatus = 
-      result.invoice_status || 
-      result.payment_status || 
-      result.status;
-    
+    let paymentStatus =
+      result.invoice_status || result.payment_status || result.status;
+
     // Check if payment_data contains invoice_status
     if (!paymentStatus && result.payment_data?.invoice_status) {
       paymentStatus = result.payment_data.invoice_status;
     }
-    
+
     // Check if payments array has status
     if (!paymentStatus && result.payment_data?.payments?.length > 0) {
       const firstPayment = result.payment_data.payments[0];
@@ -637,7 +678,9 @@ router.post("/payment/check", authenticate, async (req, res) => {
       status = "CANCELLED";
       console.log("❌ Payment status detected as CANCELLED");
     } else {
-      console.log(`⏳ Payment status is still PENDING (received: ${paymentStatus})`);
+      console.log(
+        `⏳ Payment status is still PENDING (received: ${paymentStatus})`
+      );
     }
 
     // Only update updatedAt if status actually changed
@@ -727,6 +770,28 @@ router.post("/payment/check", authenticate, async (req, res) => {
                 console.log(
                   `✅ Premium activated for user: ${normalizedEmail}`
                 );
+
+                // Send notification to user about successful payment
+                try {
+                  await notifyUser({
+                    tenantDb,
+                    userId: user._id,
+                    subdomain: subdomain,
+                    type: "payment_success",
+                    title: "Төлбөр амжилттай төлөгдлөө!",
+                    message: `Таны Premium эрх идэвхжлээ. Одоо та бүх контентыг хязгааргүй хандах боломжтой.`,
+                    metadata: {
+                      invoice_id: invoice_id,
+                      amount: currentInvoice?.amount || 0,
+                      currency: currentInvoice?.currency || "MNT",
+                      plan: currentInvoice?.description?.includes("Жилийн") ? "yearly" : "monthly",
+                    },
+                  });
+                  console.log(`📧 Payment success notification sent to user: ${normalizedEmail}`);
+                } catch (notifyError) {
+                  console.error("Failed to send payment notification:", notifyError);
+                  // Don't fail the request if notification fails
+                }
               } else {
                 console.log(
                   `⚠️ Failed to update premium for user: ${normalizedEmail}`
@@ -736,6 +801,26 @@ router.post("/payment/check", authenticate, async (req, res) => {
               console.log(
                 `ℹ️ User ${normalizedEmail} already has premium activated`
               );
+
+              // Still send notification even if premium was already activated
+              try {
+                await notifyUser({
+                  tenantDb,
+                  userId: user._id,
+                  subdomain: subdomain,
+                  type: "payment_success",
+                  title: "Төлбөр амжилттай төлөгдлөө!",
+                  message: `Таны төлбөр амжилттай бүртгэгдлээ.`,
+                  metadata: {
+                    invoice_id: invoice_id,
+                    amount: currentInvoice?.amount || 0,
+                    currency: currentInvoice?.currency || "MNT",
+                  },
+                });
+                console.log(`📧 Payment success notification sent to user: ${normalizedEmail}`);
+              } catch (notifyError) {
+                console.error("Failed to send payment notification:", notifyError);
+              }
             }
           } else {
             console.log(`⚠️ User not found with email: ${normalizedEmail}`);
@@ -856,6 +941,94 @@ router.get("/invoices", authenticate, async (req, res) => {
     res.status(500).json({
       success: false,
       message: error.message || "Failed to get invoices",
+    });
+  }
+});
+
+/**
+ * @route   POST /api2/payment/premium
+ * @desc    Activate premium status for user (legacy endpoint - premium is now auto-activated on payment)
+ * @access  Private (Authenticated users)
+ */
+router.post("/premium", authenticate, async (req, res) => {
+  try {
+    const tenantDb = req.db;
+    const userId = req.user._id || req.user.id;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "User not authenticated",
+      });
+    }
+
+    // Get user from database
+    const usersCollection = tenantDb.db.collection("users");
+    const user = await usersCollection.findOne({ _id: userId });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    // Check if user already has premium
+    if (user.premium) {
+      return res.json({
+        success: true,
+        message: "User already has premium access",
+        data: {
+          premium: true,
+          user: {
+            ...user,
+            password: undefined,
+          },
+        },
+      });
+    }
+
+    // Activate premium (this is a fallback - normally handled automatically on payment)
+    const updateResult = await usersCollection.updateOne(
+      { _id: userId },
+      {
+        $set: {
+          premium: true,
+          updatedAt: new Date(),
+        },
+      }
+    );
+
+    if (updateResult.matchedCount > 0) {
+      // Get updated user
+      const updatedUser = await usersCollection.findOne(
+        { _id: userId },
+        { projection: { password: 0 } }
+      );
+
+      console.log(
+        `✅ Premium activated for user: ${user.email} (via /payment/premium endpoint)`
+      );
+
+      return res.json({
+        success: true,
+        message: "Premium activated successfully",
+        data: {
+          premium: true,
+          user: updatedUser,
+        },
+      });
+    } else {
+      return res.status(500).json({
+        success: false,
+        message: "Failed to activate premium",
+      });
+    }
+  } catch (error) {
+    console.error("Premium activation error:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to activate premium",
     });
   }
 });
