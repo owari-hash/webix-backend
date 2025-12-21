@@ -69,7 +69,10 @@ router.post("/comic/:comicId", authenticate, async (req, res) => {
     }
 
     // Populate author before returning
-    const populatedAuthor = await populateAuthor(req.db, new ObjectId(req.user.userId));
+    const populatedAuthor = await populateAuthor(
+      req.db,
+      new ObjectId(req.user.userId)
+    );
 
     res.status(201).json({
       success: true,
@@ -79,8 +82,8 @@ router.post("/comic/:comicId", authenticate, async (req, res) => {
         ...comment,
         author: populatedAuthor || {
           id: req.user.userId,
-          name: req.user.email || 'User',
-          email: req.user.email || '',
+          name: req.user.email || "User",
+          email: req.user.email || "",
           avatar: null,
         },
       },
@@ -165,7 +168,10 @@ router.post("/novel/:novelId", authenticate, async (req, res) => {
     }
 
     // Populate author before returning
-    const populatedAuthor = await populateAuthor(req.db, new ObjectId(req.user.userId));
+    const populatedAuthor = await populateAuthor(
+      req.db,
+      new ObjectId(req.user.userId)
+    );
 
     res.status(201).json({
       success: true,
@@ -175,8 +181,8 @@ router.post("/novel/:novelId", authenticate, async (req, res) => {
         ...comment,
         author: populatedAuthor || {
           id: req.user.userId,
-          name: req.user.email || 'User',
-          email: req.user.email || '',
+          name: req.user.email || "User",
+          email: req.user.email || "",
           avatar: null,
         },
       },
@@ -194,98 +200,105 @@ router.post("/novel/:novelId", authenticate, async (req, res) => {
 // @route   POST /api2/comments/novel-chapter/:novelChapterId
 // @desc    Post a comment on a novel chapter
 // @access  Private
-router.post("/novel-chapter/:novelChapterId", authenticate, async (req, res) => {
-  try {
-    const { ObjectId } = require("mongodb");
-    const { deleteCachePattern } = require("../utils/redis");
-    const { content } = req.body;
-    const { novelChapterId } = req.params;
-
-    if (!content || content.trim().length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: "Comment content is required",
-      });
-    }
-
-    if (content.length > 5000) {
-      return res.status(400).json({
-        success: false,
-        message: "Comment cannot exceed 5000 characters",
-      });
-    }
-
-    // Check if novel chapter exists
-    const chapterCollection = req.db.collection("NovelChapter");
-    const chapter = await chapterCollection.findOne({
-      _id: new ObjectId(novelChapterId),
-    });
-
-    if (!chapter) {
-      return res.status(404).json({
-        success: false,
-        message: "Novel chapter not found",
-      });
-    }
-
-    const commentCollection = req.db.collection("Comment");
-
-    const comment = {
-      content: content.trim(),
-      author: new ObjectId(req.user.userId),
-      novelId: null,
-      novelChapterId: new ObjectId(novelChapterId),
-      comicId: null,
-      chapterId: null,
-      novelId: null,
-      novelChapterId: null,
-      subdomain: req.subdomain,
-      likes: 0,
-      isEdited: false,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-
-    const result = await commentCollection.insertOne(comment);
-
-    // Invalidate cache for this chapter's comments
-    await deleteCachePattern(`comments:novel-chapter:${novelChapterId}:*`);
-
-    // Track achievement: comment posted
+router.post(
+  "/novel-chapter/:novelChapterId",
+  authenticate,
+  async (req, res) => {
     try {
-      const { trackComment } = require("../utils/achievementService");
-      await trackComment(req.db, req.user.userId, req.subdomain);
-    } catch (achievementError) {
-      console.error("Error tracking comment achievement:", achievementError);
-      // Don't fail the request if achievement tracking fails
-    }
+      const { ObjectId } = require("mongodb");
+      const { deleteCachePattern } = require("../utils/redis");
+      const { content } = req.body;
+      const { novelChapterId } = req.params;
 
-    // Populate author before returning
-    const populatedAuthor = await populateAuthor(req.db, new ObjectId(req.user.userId));
+      if (!content || content.trim().length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Comment content is required",
+        });
+      }
 
-    res.status(201).json({
-      success: true,
-      message: "Comment posted successfully",
-      comment: {
-        id: result.insertedId,
-        ...comment,
-        author: populatedAuthor || {
-          id: req.user.userId,
-          name: req.user.email || 'User',
-          email: req.user.email || '',
-          avatar: null,
+      if (content.length > 5000) {
+        return res.status(400).json({
+          success: false,
+          message: "Comment cannot exceed 5000 characters",
+        });
+      }
+
+      // Check if novel chapter exists
+      const chapterCollection = req.db.collection("NovelChapter");
+      const chapter = await chapterCollection.findOne({
+        _id: new ObjectId(novelChapterId),
+      });
+
+      if (!chapter) {
+        return res.status(404).json({
+          success: false,
+          message: "Novel chapter not found",
+        });
+      }
+
+      const commentCollection = req.db.collection("Comment");
+
+      const comment = {
+        content: content.trim(),
+        author: new ObjectId(req.user.userId),
+        novelId: null,
+        novelChapterId: new ObjectId(novelChapterId),
+        comicId: null,
+        chapterId: null,
+        novelId: null,
+        novelChapterId: null,
+        subdomain: req.subdomain,
+        likes: 0,
+        isEdited: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      const result = await commentCollection.insertOne(comment);
+
+      // Invalidate cache for this chapter's comments
+      await deleteCachePattern(`comments:novel-chapter:${novelChapterId}:*`);
+
+      // Track achievement: comment posted
+      try {
+        const { trackComment } = require("../utils/achievementService");
+        await trackComment(req.db, req.user.userId, req.subdomain);
+      } catch (achievementError) {
+        console.error("Error tracking comment achievement:", achievementError);
+        // Don't fail the request if achievement tracking fails
+      }
+
+      // Populate author before returning
+      const populatedAuthor = await populateAuthor(
+        req.db,
+        new ObjectId(req.user.userId)
+      );
+
+      res.status(201).json({
+        success: true,
+        message: "Comment posted successfully",
+        comment: {
+          id: result.insertedId,
+          ...comment,
+          author: populatedAuthor || {
+            id: req.user.userId,
+            name: req.user.email || "User",
+            email: req.user.email || "",
+            avatar: null,
+          },
         },
-      },
-    });
-  } catch (error) {
-    console.error("Post comment on novel chapter error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to post comment",
-      error: error.message,
-    });
+      });
+    } catch (error) {
+      console.error("Post comment on novel chapter error:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to post comment",
+        error: error.message,
+      });
+    }
   }
-});
+);
 
 // @route   POST /api2/comments/chapter/:chapterId
 // @desc    Post a comment on a chapter
@@ -353,7 +366,10 @@ router.post("/chapter/:chapterId", authenticate, async (req, res) => {
     }
 
     // Populate author before returning
-    const populatedAuthor = await populateAuthor(req.db, new ObjectId(req.user.userId));
+    const populatedAuthor = await populateAuthor(
+      req.db,
+      new ObjectId(req.user.userId)
+    );
 
     res.status(201).json({
       success: true,
@@ -363,8 +379,8 @@ router.post("/chapter/:chapterId", authenticate, async (req, res) => {
         ...comment,
         author: populatedAuthor || {
           id: req.user.userId,
-          name: req.user.email || 'User',
-          email: req.user.email || '',
+          name: req.user.email || "User",
+          email: req.user.email || "",
           avatar: null,
         },
       },
@@ -465,7 +481,10 @@ router.post("/:commentId/reply", authenticate, async (req, res) => {
     }
 
     // Populate author before returning
-    const populatedAuthor = await populateAuthor(req.db, new ObjectId(req.user.userId));
+    const populatedAuthor = await populateAuthor(
+      req.db,
+      new ObjectId(req.user.userId)
+    );
 
     res.status(201).json({
       success: true,
@@ -475,8 +494,8 @@ router.post("/:commentId/reply", authenticate, async (req, res) => {
         ...reply,
         author: populatedAuthor || {
           id: req.user.userId,
-          name: req.user.email || 'User',
-          email: req.user.email || '',
+          name: req.user.email || "User",
+          email: req.user.email || "",
           avatar: null,
         },
       },
@@ -498,7 +517,13 @@ async function populateAuthor(db, authorId) {
 
   let author = await usersCollection.findOne(
     { _id: authorId },
-    { projection: { name: 1, displayName: 1, username: 1, email: 1, avatar: 1, firstName: 1, lastName: 1 } }
+    {
+      projection: {
+        name: 1,
+        email: 1,
+        avatar: 1,
+      },
+    }
   );
 
   if (!author) {
@@ -507,12 +532,8 @@ async function populateAuthor(db, authorId) {
       {
         projection: {
           name: 1,
-          displayName: 1,
-          username: 1,
           email: 1,
           avatar: 1,
-          firstName: 1,
-          lastName: 1,
         },
       }
     );
@@ -524,24 +545,18 @@ async function populateAuthor(db, authorId) {
 
   // Determine the best name to use
   let authorName = author.name;
-  if (!authorName && (author.firstName || author.lastName)) {
-    authorName = `${author.firstName || ""} ${author.lastName || ""}`.trim();
-  }
-  if (!authorName) {
-    authorName = author.displayName;
-  }
-  if (!authorName) {
-    authorName = author.username;
-  }
-  if (!authorName && author.email) {
-    authorName = author.email.split('@')[0];
+  // If name is empty or null, use email prefix
+  if (!authorName || authorName.trim() === "") {
+    if (author.email) {
+      authorName = author.email.split("@")[0];
+    } else {
+      authorName = "Нэргүй хэрэглэгч";
+    }
   }
 
   return {
     id: author._id,
-    name: authorName || 'Нэргүй хэрэглэгч',
-    displayName: author.displayName,
-    username: author.username,
+    name: authorName,
     email: author.email,
     avatar: author.avatar,
   };
@@ -603,7 +618,10 @@ router.get("/comic/:comicId", async (req, res) => {
     const skip = (page - 1) * limit;
 
     // Import optimized aggregation
-    const { buildCommentsAggregationPipeline, getCommentsCount } = require("../utils/commentAggregation");
+    const {
+      buildCommentsAggregationPipeline,
+      getCommentsCount,
+    } = require("../utils/commentAggregation");
     const { getCache, setCache } = require("../utils/redis");
 
     // Get current user ID if authenticated (for like status)
@@ -639,12 +657,12 @@ router.get("/comic/:comicId", async (req, res) => {
     const resourceId = new ObjectId(comicId);
 
     // Get total count
-    const total = await getCommentsCount(req.db, resourceId, 'comic');
+    const total = await getCommentsCount(req.db, resourceId, "comic");
 
     // Build and execute aggregation pipeline
     const pipeline = buildCommentsAggregationPipeline(
       resourceId,
-      'comic',
+      "comic",
       currentUserId,
       skip,
       limit
@@ -690,7 +708,10 @@ router.get("/novel/:novelId", async (req, res) => {
     const skip = (page - 1) * limit;
 
     // Import optimized aggregation
-    const { buildCommentsAggregationPipeline, getCommentsCount } = require("../utils/commentAggregation");
+    const {
+      buildCommentsAggregationPipeline,
+      getCommentsCount,
+    } = require("../utils/commentAggregation");
     const { getCache, setCache } = require("../utils/redis");
 
     // Get current user ID if authenticated (for like status)
@@ -726,12 +747,12 @@ router.get("/novel/:novelId", async (req, res) => {
     const resourceId = new ObjectId(novelId);
 
     // Get total count
-    const total = await getCommentsCount(req.db, resourceId, 'novel');
+    const total = await getCommentsCount(req.db, resourceId, "novel");
 
     // Build and execute aggregation pipeline
     const pipeline = buildCommentsAggregationPipeline(
       resourceId,
-      'novel',
+      "novel",
       currentUserId,
       skip,
       limit
@@ -777,7 +798,10 @@ router.get("/novel-chapter/:novelChapterId", async (req, res) => {
     const skip = (page - 1) * limit;
 
     // Import optimized aggregation
-    const { buildCommentsAggregationPipeline, getCommentsCount } = require("../utils/commentAggregation");
+    const {
+      buildCommentsAggregationPipeline,
+      getCommentsCount,
+    } = require("../utils/commentAggregation");
     const { getCache, setCache } = require("../utils/redis");
 
     // Get current user ID if authenticated (for like status)
@@ -813,12 +837,12 @@ router.get("/novel-chapter/:novelChapterId", async (req, res) => {
     const resourceId = new ObjectId(novelChapterId);
 
     // Get total count
-    const total = await getCommentsCount(req.db, resourceId, 'novel-chapter');
+    const total = await getCommentsCount(req.db, resourceId, "novel-chapter");
 
     // Build and execute aggregation pipeline
     const pipeline = buildCommentsAggregationPipeline(
       resourceId,
-      'novel-chapter',
+      "novel-chapter",
       currentUserId,
       skip,
       limit
@@ -864,7 +888,10 @@ router.get("/chapter/:chapterId", async (req, res) => {
     const skip = (page - 1) * limit;
 
     // Import optimized aggregation
-    const { buildCommentsAggregationPipeline, getCommentsCount } = require("../utils/commentAggregation");
+    const {
+      buildCommentsAggregationPipeline,
+      getCommentsCount,
+    } = require("../utils/commentAggregation");
     const { getCache, setCache } = require("../utils/redis");
 
     // Get current user ID if authenticated (for like status)
@@ -900,12 +927,12 @@ router.get("/chapter/:chapterId", async (req, res) => {
     const resourceId = new ObjectId(chapterId);
 
     // Get total count
-    const total = await getCommentsCount(req.db, resourceId, 'chapter');
+    const total = await getCommentsCount(req.db, resourceId, "chapter");
 
     // Build and execute aggregation pipeline
     const pipeline = buildCommentsAggregationPipeline(
       resourceId,
-      'chapter',
+      "chapter",
       currentUserId,
       skip,
       limit
@@ -1154,7 +1181,10 @@ router.post("/:id/like", authenticate, async (req, res) => {
 
     // Track achievement: like given and received + notify comment author
     try {
-      const { trackLikeGiven, trackLikeReceived } = require("../utils/achievementService");
+      const {
+        trackLikeGiven,
+        trackLikeReceived,
+      } = require("../utils/achievementService");
       await trackLikeGiven(req.db, req.user.userId, req.subdomain, true);
       // Track for comment author
       if (comment.author && comment.author.toString() !== req.user.userId) {
@@ -1174,7 +1204,10 @@ router.post("/:id/like", authenticate, async (req, res) => {
         });
       }
     } catch (achievementError) {
-      console.error("Error tracking like/notification achievement:", achievementError);
+      console.error(
+        "Error tracking like/notification achievement:",
+        achievementError
+      );
       // Don't fail the request if achievement tracking fails or notification fails
     }
 
