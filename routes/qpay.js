@@ -762,7 +762,8 @@ router.post("/payment/check", authenticate, async (req, res) => {
             userEmail = emailMatch[1].trim();
           }
           if (!planName) {
-            const planMatch = currentInvoice.description.match(/Premium\s+(.+?)\s*-/);
+            const planMatch =
+              currentInvoice.description.match(/Premium\s+(.+?)\s*-/);
             if (planMatch && planMatch[1]) {
               planName = planMatch[1].trim();
             }
@@ -824,7 +825,9 @@ router.post("/payment/check", authenticate, async (req, res) => {
             if (hasActivePremium && user.premiumExpiresAt) {
               const currentExpiration = new Date(user.premiumExpiresAt);
               const newExpiration = new Date(currentExpiration);
-              newExpiration.setMonth(currentExpiration.getMonth() + planDuration);
+              newExpiration.setMonth(
+                currentExpiration.getMonth() + planDuration
+              );
               updateFields.premiumExpiresAt = newExpiration;
             }
 
@@ -833,63 +836,21 @@ router.post("/payment/check", authenticate, async (req, res) => {
               { $set: updateFields }
             );
 
-              if (updateResult.matchedCount > 0) {
-                const expirationDate = updateFields.premiumExpiresAt;
-                const expirationDateStr = expirationDate
-                  ? new Date(expirationDate).toLocaleDateString("mn-MN", {
-                      year: "numeric",
-                      month: "long",
-                      day: "numeric",
-                    })
-                  : null;
+            if (updateResult.matchedCount > 0) {
+              const expirationDateFinal = updateFields.premiumExpiresAt;
+              const expirationDateStr = expirationDateFinal
+                ? new Date(expirationDateFinal).toLocaleDateString("mn-MN", {
+                    year: "numeric",
+                    month: "long",
+                    day: "numeric",
+                  })
+                : null;
 
-                console.log(
-                  `✅ Premium activated for user: ${normalizedEmail}, expires: ${expirationDateStr}`
-                );
-
-                // Send notification to user about successful payment
-                try {
-                  await notifyUser({
-                    tenantDb,
-                    userId: user._id,
-                    subdomain: subdomain,
-                    type: "payment_success",
-                    title: "Төлбөр амжилттай төлөгдлөө!",
-                    message: `Таны Premium эрх идэвхжлээ. ${
-                      expirationDateStr
-                        ? `Дуусах хугацаа: ${expirationDateStr}`
-                        : "Одоо та бүх контентыг хязгааргүй хандах боломжтой."
-                    }`,
-                    metadata: {
-                      invoice_id: invoice_id,
-                      amount: currentInvoice?.amount || 0,
-                      currency: currentInvoice?.currency || "MNT",
-                      plan: planName || "monthly",
-                      duration: planDuration,
-                      expiresAt: expirationDate,
-                    },
-                  });
-                  console.log(
-                    `📧 Payment success notification sent to user: ${normalizedEmail}`
-                  );
-                } catch (notifyError) {
-                  console.error(
-                    "Failed to send payment notification:",
-                    notifyError
-                  );
-                  // Don't fail the request if notification fails
-                }
-              } else {
-                console.log(
-                  `⚠️ Failed to update premium for user: ${normalizedEmail}`
-                );
-              }
-            } else {
               console.log(
-                `ℹ️ User ${normalizedEmail} already has premium activated`
+                `✅ Premium activated for user: ${normalizedEmail}, expires: ${expirationDateStr}`
               );
 
-              // Still send notification even if premium was already activated
+              // Send notification to user about successful payment
               try {
                 await notifyUser({
                   tenantDb,
@@ -897,11 +858,18 @@ router.post("/payment/check", authenticate, async (req, res) => {
                   subdomain: subdomain,
                   type: "payment_success",
                   title: "Төлбөр амжилттай төлөгдлөө!",
-                  message: `Таны төлбөр амжилттай бүртгэгдлээ.`,
+                  message: `Таны Premium эрх идэвхжлээ. ${
+                    expirationDateStr
+                      ? `Дуусах хугацаа: ${expirationDateStr}`
+                      : "Одоо та бүх контентыг хязгааргүй хандах боломжтой."
+                  }`,
                   metadata: {
                     invoice_id: invoice_id,
                     amount: currentInvoice?.amount || 0,
                     currency: currentInvoice?.currency || "MNT",
+                    plan: planName || "monthly",
+                    duration: planDuration,
+                    expiresAt: expirationDateFinal,
                   },
                 });
                 console.log(
@@ -912,7 +880,12 @@ router.post("/payment/check", authenticate, async (req, res) => {
                   "Failed to send payment notification:",
                   notifyError
                 );
+                // Don't fail the request if notification fails
               }
+            } else {
+              console.log(
+                `⚠️ Failed to update premium for user: ${normalizedEmail}`
+              );
             }
           } else {
             console.log(`⚠️ User not found with email: ${normalizedEmail}`);
@@ -939,8 +912,8 @@ router.post("/payment/check", authenticate, async (req, res) => {
         invoice_id: invoice_id,
         status: status,
         payment_status: paymentStatus || status,
-        payment_data: result.payment_data || result,
-        ...result,
+        payment_data: result?.payment_data || result || {},
+        ...(result && typeof result === "object" ? result : {}),
       },
     });
   } catch (error) {
