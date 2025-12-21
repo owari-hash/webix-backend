@@ -272,12 +272,23 @@ app.use(async (req, res, next) => {
     // Check Organization License
     // We use the central database to check the subscription status
     // We check if subdomain exists and it's not a generic localhost access (unless headers provided)
+    // Exception: Allow /organizations/license endpoint to be called even when expired (for refresh button)
+    // Also allow it for unregistered organizations to show proper error message
+    const isLicenseEndpoint =
+      req.path === "/api2/organizations/license" ||
+      req.path === "/organizations/license";
+
     const isGenericLocalhost =
       (subdomain === "localhost" || subdomain === "127.0.0.1") &&
       !req.headers["x-original-host"] &&
       !req.headers["x-tenant-subdomain"];
 
-    if (subdomain && !isGenericLocalhost && centralDbConnection) {
+    if (
+      subdomain &&
+      !isGenericLocalhost &&
+      centralDbConnection &&
+      !isLicenseEndpoint
+    ) {
       try {
         // NOTE: Collection name is "Organization" (singular, capitalized) in this DB
         const organizationsCollection =
@@ -286,28 +297,37 @@ app.use(async (req, res, next) => {
           subdomain: subdomain,
         });
 
-        if (organization) {
-          const isLicenseActive =
-            organization.subscription &&
-            organization.subscription.status === "active" &&
-            (!organization.subscription.endDate ||
-              new Date(organization.subscription.endDate) > new Date());
+        // Check if organization exists
+        if (!organization) {
+          return res.status(403).json({
+            success: false,
+            message: "Organization not registered",
+            code: "ORGANIZATION_NOT_REGISTERED",
+            subdomain: subdomain,
+          });
+        }
 
-          if (!isLicenseActive) {
-            return res.status(403).json({
-              success: false,
-              message: "Organization license is expired or inactive",
-              code: "LICENSE_EXPIRED",
-              organization: {
-                name: organization.name,
-                displayName: organization.displayName,
-                contactEmail:
-                  organization.email && organization.email[0]
-                    ? organization.email[0]
-                    : null,
-              },
-            });
-          }
+        // Check license status
+        const isLicenseActive =
+          organization.subscription &&
+          organization.subscription.status === "active" &&
+          (!organization.subscription.endDate ||
+            new Date(organization.subscription.endDate) > new Date());
+
+        if (!isLicenseActive) {
+          return res.status(403).json({
+            success: false,
+            message: "Organization license is expired or inactive",
+            code: "LICENSE_EXPIRED",
+            organization: {
+              name: organization.name,
+              displayName: organization.displayName,
+              contactEmail:
+                organization.email && organization.email[0]
+                  ? organization.email[0]
+                  : null,
+            },
+          });
         }
       } catch (licenseError) {
         console.error("License check error:", licenseError);
@@ -939,8 +959,11 @@ io.use(async (socket, next) => {
     }
 
     const jwt = require("jsonwebtoken");
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || "your-secret-key");
-    
+    const decoded = jwt.verify(
+      token,
+      process.env.JWT_SECRET || "your-secret-key"
+    );
+
     socket.userId = decoded.userId;
     socket.subdomain = socket.handshake.auth.subdomain || decoded.subdomain;
     next();
@@ -951,7 +974,9 @@ io.use(async (socket, next) => {
 
 // Socket.IO connection handler
 io.on("connection", (socket) => {
-  console.log(`🔌 Socket connected: ${socket.id} (User: ${socket.userId}, Subdomain: ${socket.subdomain})`);
+  console.log(
+    `🔌 Socket connected: ${socket.id} (User: ${socket.userId}, Subdomain: ${socket.subdomain})`
+  );
 
   // Join user-specific room
   socket.join(`user:${socket.userId}`);
