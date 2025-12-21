@@ -646,16 +646,12 @@ router.get("/chapter/:id", async (req, res) => {
       });
     }
 
-    // Convert base64 images to file URLs if needed
-    if (chapter.images && Array.isArray(chapter.images)) {
-      chapter.images = await convertBase64ImagesToUrls(req, chapter.images);
-
-      // Update the chapter in database with converted URLs (one-time migration)
-      await collection.updateOne(
-        { _id: new ObjectId(req.params.id) },
-        { $set: { images: chapter.images } }
-      );
-    }
+    // Keep base64 images as-is (no conversion to URLs)
+    // Base64 images are stored directly in database
+    // if (chapter.images && Array.isArray(chapter.images)) {
+    //   chapter.images = await convertBase64ImagesToUrls(req, chapter.images);
+    //   // DISABLED: No longer converting base64 to URLs - storing base64 directly
+    // }
 
     // Increment view count
     await collection.updateOne(
