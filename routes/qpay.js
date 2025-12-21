@@ -485,25 +485,143 @@ router.post("/payment/check", authenticate, async (req, res) => {
       });
     }
 
-    // Check payment status via QPay API
+    // Get current invoice from database first
+    const invoicesCollection = tenantDb.db.collection("invoices");
+    const currentInvoice = await invoicesCollection.findOne({
+      invoice_id: invoice_id,
+    });
+
+    // If invoice not found, return error
+    if (!currentInvoice) {
+      return res.status(404).json({
+        success: false,
+        message: "Invoice not found",
+      });
+    }
+
+    const previousStatus = currentInvoice?.status || "PENDING";
+
+    // If invoice is already PAID or CANCELLED, check if premium needs to be activated
+    if (previousStatus === "PAID" || previousStatus === "CANCELLED") {
+      // Check if premium activation is needed (only for PAID status)
+      if (previousStatus === "PAID") {
+        try {
+          // Extract email from invoice description
+          let userEmail = null;
+          const description = currentInvoice?.description || "";
+
+          if (description) {
+            // Extract email using regex (format: "Premium Сарын багц - test@gmail.com")
+            const emailMatch = description.match(
+              /-?\s*([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/
+            );
+            if (emailMatch && emailMatch[1]) {
+              userEmail = emailMatch[1].trim().toLowerCase();
+            }
+          }
+
+          // Also try to extract from payment_data if available
+          if (
+            !userEmail &&
+            currentInvoice?.payment_data?.payments?.length > 0
+          ) {
+            const paymentDescription =
+              currentInvoice.payment_data.payments[0].payment_description || "";
+            const emailMatch = paymentDescription.match(
+              /-?\s*([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/
+            );
+            if (emailMatch && emailMatch[1]) {
+              userEmail = emailMatch[1].trim().toLowerCase();
+            }
+          }
+
+          // If email found, check and activate premium if not already activated
+          if (userEmail) {
+            const usersCollection = tenantDb.db.collection("users");
+            const user = await usersCollection.findOne({ email: userEmail });
+
+            if (user && !user.premium) {
+              const updateResult = await usersCollection.updateOne(
+                { email: userEmail },
+                {
+                  $set: {
+                    premium: true,
+                    updatedAt: new Date(),
+                  },
+                }
+              );
+
+              if (updateResult.matchedCount > 0) {
+                console.log(
+                  `✅ Premium activated for user: ${userEmail} (from existing PAID invoice)`
+                );
+              } else {
+                console.log(
+                  `⚠️ Failed to activate premium for user: ${userEmail}`
+                );
+              }
+            } else if (user && user.premium) {
+              console.log(`ℹ️ User ${userEmail} already has premium activated`);
+            } else {
+              console.log(`⚠️ User not found with email: ${userEmail}`);
+            }
+          } else {
+            console.log(
+              "⚠️ Could not extract email from invoice description:",
+              description
+            );
+          }
+        } catch (premiumError) {
+          console.error(
+            "Error activating premium for existing PAID invoice:",
+            premiumError
+          );
+          // Don't fail the request if premium activation fails
+        }
+      }
+
+      return res.json({
+        success: true,
+        message: "Payment status retrieved successfully",
+        data: {
+          invoice_id: invoice_id,
+          status: previousStatus,
+          payment_status: currentInvoice.payment_status || previousStatus,
+          payment_data: currentInvoice.payment_data || {},
+        },
+      });
+    }
+
+    // Only check with QPay API if status is still PENDING
     const result = await qpayService.checkPayment(
       centralDb,
       subdomain,
       invoice_id
     );
 
-    // Update invoice status in database
-    const invoicesCollection = tenantDb.db.collection("invoices");
-    const paymentStatus = result.payment_status || result.status;
+    // Extract payment status from QPay response
+    // QPay API returns status in different possible fields
+    let paymentStatus = result.payment_status || result.status;
 
-    // Get current invoice to check if status changed
-    const currentInvoice = await invoicesCollection.findOne({
-      invoice_id: invoice_id,
-    });
-    const previousStatus = currentInvoice?.status || "PENDING";
+    // Check if payment_data contains invoice_status
+    if (!paymentStatus && result.payment_data?.invoice_status) {
+      paymentStatus = result.payment_data.invoice_status;
+    }
+
+    // Check if payments array has status
+    if (!paymentStatus && result.payment_data?.payments?.length > 0) {
+      const firstPayment = result.payment_data.payments[0];
+      if (firstPayment.payment_status) {
+        paymentStatus = firstPayment.payment_status;
+      }
+    }
 
     let status = "PENDING";
-    if (paymentStatus === "PAID" || paymentStatus === "paid") {
+    if (
+      paymentStatus === "PAID" ||
+      paymentStatus === "paid" ||
+      paymentStatus === "SUCCESS"
+    ) {
       status = "PAID";
     } else if (paymentStatus === "CANCELLED" || paymentStatus === "cancelled") {
       status = "CANCELLED";
@@ -563,23 +681,49 @@ router.post("/payment/check", authenticate, async (req, res) => {
         // If email found, activate premium for the user
         if (userEmail) {
           const usersCollection = tenantDb.db.collection("users");
-          const updateResult = await usersCollection.updateOne(
-            { email: userEmail.toLowerCase() },
-            {
-              $set: {
-                premium: true,
-                updatedAt: new Date(),
-              },
-            }
-          );
+          const normalizedEmail = userEmail.toLowerCase();
 
-          if (updateResult.matchedCount > 0) {
-            console.log(`✅ Premium activated for user: ${userEmail}`);
+          // Check if user exists and if premium is already activated
+          const user = await usersCollection.findOne({
+            email: normalizedEmail,
+          });
+
+          if (user) {
+            if (!user.premium) {
+              const updateResult = await usersCollection.updateOne(
+                { email: normalizedEmail },
+                {
+                  $set: {
+                    premium: true,
+                    updatedAt: new Date(),
+                  },
+                }
+              );
+
+              if (updateResult.matchedCount > 0) {
+                console.log(
+                  `✅ Premium activated for user: ${normalizedEmail}`
+                );
+              } else {
+                console.log(
+                  `⚠️ Failed to update premium for user: ${normalizedEmail}`
+                );
+              }
+            } else {
+              console.log(
+                `ℹ️ User ${normalizedEmail} already has premium activated`
+              );
+            }
           } else {
-            console.log(`⚠️ User not found with email: ${userEmail}`);
+            console.log(`⚠️ User not found with email: ${normalizedEmail}`);
           }
         } else {
           console.log("⚠️ Could not extract email from payment description");
+          console.log("   Invoice description:", currentInvoice?.description);
+          console.log(
+            "   Payment data:",
+            JSON.stringify(result.payment_data, null, 2)
+          );
         }
       } catch (premiumError) {
         console.error("Error activating premium:", premiumError);
@@ -587,12 +731,16 @@ router.post("/payment/check", authenticate, async (req, res) => {
       }
     }
 
+    // Return response with proper status structure
     res.json({
       success: true,
       message: "Payment status retrieved successfully",
       data: {
-        ...result,
+        invoice_id: invoice_id,
         status: status,
+        payment_status: paymentStatus || status,
+        payment_data: result.payment_data || result,
+        ...result,
       },
     });
   } catch (error) {
