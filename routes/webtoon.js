@@ -443,19 +443,18 @@ router.get("/comic/:comicId/chapter", async (req, res) => {
       });
     }
 
-    // Convert base64 images to file URLs if needed
-    if (latestChapter.images && Array.isArray(latestChapter.images)) {
-      latestChapter.images = await convertBase64ImagesToUrls(
-        req,
-        latestChapter.images
-      );
-
-      // Update the chapter in database with converted URLs (one-time migration)
-      await collection.updateOne(
-        { _id: latestChapter._id },
-        { $set: { images: latestChapter.images } }
-      );
-    }
+    // Keep base64 images as-is (no conversion to URLs)
+    // DISABLED: Base64 images are stored directly in database
+    // if (latestChapter.images && Array.isArray(latestChapter.images)) {
+    //   latestChapter.images = await convertBase64ImagesToUrls(
+    //     req,
+    //     latestChapter.images
+    //   );
+    //   await collection.updateOne(
+    //     { _id: latestChapter._id },
+    //     { $set: { images: latestChapter.images } }
+    //   );
+    // }
 
     res.json({
       success: true,
@@ -495,30 +494,12 @@ router.get("/comic/:comicId/chapters", async (req, res) => {
       .toArray();
 
     // Convert base64 images to file URLs for all chapters
-    const chaptersWithUrls = await Promise.all(
-      chapters.map(async (chapter) => {
-        if (chapter.images && Array.isArray(chapter.images)) {
-          const convertedImages = await convertBase64ImagesToUrls(
-            req,
-            chapter.images
-          );
-
-          // Update chapter in database with converted URLs (one-time migration)
-          if (convertedImages.some((img, idx) => img !== chapter.images[idx])) {
-            await collection.updateOne(
-              { _id: chapter._id },
-              { $set: { images: convertedImages } }
-            );
-          }
-
-          return {
-            ...chapter,
-            images: convertedImages,
-          };
-        }
-        return chapter;
-      })
-    );
+    // Keep base64 images as-is (no conversion to URLs)
+    // DISABLED: Base64 images are stored directly in database
+    const chaptersWithUrls = chapters.map((chapter) => {
+      // No conversion - return images as-is
+      return chapter;
+    });
 
     res.json({
       success: true,
