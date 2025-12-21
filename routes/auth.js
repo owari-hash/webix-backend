@@ -431,19 +431,97 @@ router.get("/me", authenticate, async (req, res) => {
       });
     }
 
+    // Check premium expiration
+    const now = new Date();
+    let isPremium = user.premium || false;
+
+    // If premium is true but expiration date has passed, set premium to false
+    if (isPremium && user.premiumExpiresAt) {
+      const expirationDate = new Date(user.premiumExpiresAt);
+      if (expirationDate <= now) {
+        isPremium = false;
+        // Update the database
+        await collection.updateOne(
+          { _id: userId },
+          {
+            $set: {
+              premium: false,
+              updatedAt: new Date(),
+            },
+          }
+        );
+      }
+    }
+
     res.status(200).json({
       success: true,
       user: {
         id: user._id,
+        _id: user._id,
         name: user.firstName ? `${user.firstName} ${user.lastName}` : user.name,
         firstName: user.firstName,
         lastName: user.lastName,
         username: user.username,
         email: user.email,
         role: user.role,
+        premium: isPremium,
+        premiumExpiresAt: user.premiumExpiresAt,
         status: user.status,
         subdomain: req.subdomain,
         avatar: user.avatar,
+        createdAt: user.createdAt,
+        lastLogin: user.lastLogin,
+      },
+    });
+  } catch (error) {
+    console.error("Get user error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to get user",
+      error: error.message,
+    });
+  }
+});
+
+// Legacy endpoint - keeping for backward compatibility
+router.get("/me-old", authenticate, async (req, res) => {
+  try {
+    const { ObjectId } = require("mongodb");
+    const userId = new ObjectId(req.user.userId);
+
+    // Get user from DB
+    let collection = req.db.collection("users");
+    let user = await collection.findOne({ _id: userId });
+
+    if (!user) {
+      collection = req.db.collection("User");
+      user = await collection.findOne({ _id: userId });
+    }
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      user: {
+        id: user._id,
+        _id: user._id,
+        name: user.firstName ? `${user.firstName} ${user.lastName}` : user.name,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+        premium: user.premium || false,
+        status: user.status,
+        subdomain: req.subdomain,
+        avatar: user.avatar,
+        createdAt: user.createdAt,
+        lastLogin: user.lastLogin,
       },
     });
   } catch (error) {

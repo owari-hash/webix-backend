@@ -570,12 +570,19 @@ router.post("/payment/check", authenticate, async (req, res) => {
                       invoice_id: invoice_id,
                       amount: currentInvoice?.amount || 0,
                       currency: currentInvoice?.currency || "MNT",
-                      plan: currentInvoice?.description?.includes("Жилийн") ? "yearly" : "monthly",
+                      plan: currentInvoice?.description?.includes("Жилийн")
+                        ? "yearly"
+                        : "monthly",
                     },
                   });
-                  console.log(`📧 Payment success notification sent to user: ${userEmail}`);
+                  console.log(
+                    `📧 Payment success notification sent to user: ${userEmail}`
+                  );
                 } catch (notifyError) {
-                  console.error("Failed to send payment notification:", notifyError);
+                  console.error(
+                    "Failed to send payment notification:",
+                    notifyError
+                  );
                   // Don't fail the request if notification fails
                 }
               } else {
@@ -601,9 +608,14 @@ router.post("/payment/check", authenticate, async (req, res) => {
                     currency: currentInvoice?.currency || "MNT",
                   },
                 });
-                console.log(`📧 Payment success notification sent to user: ${userEmail}`);
+                console.log(
+                  `📧 Payment success notification sent to user: ${userEmail}`
+                );
               } catch (notifyError) {
-                console.error("Failed to send payment notification:", notifyError);
+                console.error(
+                  "Failed to send payment notification:",
+                  notifyError
+                );
               }
             } else {
               console.log(`⚠️ User not found with email: ${userEmail}`);
@@ -714,9 +726,11 @@ router.post("/payment/check", authenticate, async (req, res) => {
     // If payment is PAID and status changed from PENDING to PAID, activate premium user
     if (status === "PAID" && previousStatus === "PENDING") {
       try {
-        // Extract email from payment description
-        // Format: "Premium Сарын багц - jrrsenpai@gmail.com"
+        // Extract email and plan info from payment description
+        // Format: "Premium Сарын багц - jrrsenpai@gmail.com" or "Premium [Plan Name] - email"
         let userEmail = null;
+        let planName = null;
+        let planDuration = 1; // Default to 1 month
 
         // Try to extract from payment_data.payments[0].payment_description
         if (
@@ -732,6 +746,11 @@ router.post("/payment/check", authenticate, async (req, res) => {
           if (emailMatch && emailMatch[1]) {
             userEmail = emailMatch[1].trim();
           }
+          // Extract plan name (text before the email)
+          const planMatch = paymentDescription.match(/Premium\s+(.+?)\s*-/);
+          if (planMatch && planMatch[1]) {
+            planName = planMatch[1].trim();
+          }
         }
 
         // Fallback: try to extract from invoice description
@@ -742,6 +761,34 @@ router.post("/payment/check", authenticate, async (req, res) => {
           if (emailMatch && emailMatch[1]) {
             userEmail = emailMatch[1].trim();
           }
+          if (!planName) {
+            const planMatch = currentInvoice.description.match(/Premium\s+(.+?)\s*-/);
+            if (planMatch && planMatch[1]) {
+              planName = planMatch[1].trim();
+            }
+          }
+        }
+
+        // Get plan duration from organization's premium plans
+        if (planName) {
+          try {
+            const organizationCollection = centralDb.collection("Organization");
+            const organization = await organizationCollection.findOne(
+              { subdomain },
+              { projection: { premiumPlans: 1 } }
+            );
+            if (organization?.premiumPlans) {
+              const plan = organization.premiumPlans.find(
+                (p) => p.name === planName || p.label === planName
+              );
+              if (plan) {
+                planDuration = plan.duration || 1;
+              }
+            }
+          } catch (planError) {
+            console.error("Error fetching plan duration:", planError);
+            // Use default duration
+          }
         }
 
         // If email found, activate premium for the user
@@ -749,26 +796,55 @@ router.post("/payment/check", authenticate, async (req, res) => {
           const usersCollection = tenantDb.db.collection("users");
           const normalizedEmail = userEmail.toLowerCase();
 
-          // Check if user exists and if premium is already activated
+          // Check if user exists
           const user = await usersCollection.findOne({
             email: normalizedEmail,
           });
 
           if (user) {
-            if (!user.premium) {
-              const updateResult = await usersCollection.updateOne(
-                { email: normalizedEmail },
-                {
-                  $set: {
-                    premium: true,
-                    updatedAt: new Date(),
-                  },
-                }
-              );
+            // Calculate expiration date
+            const now = new Date();
+            const expirationDate = new Date(now);
+            expirationDate.setMonth(now.getMonth() + planDuration);
+
+            // Check if user already has premium and if it's expired
+            const hasActivePremium =
+              user.premium &&
+              user.premiumExpiresAt &&
+              new Date(user.premiumExpiresAt) > now;
+
+            // Update premium status and expiration
+            const updateFields = {
+              premium: true,
+              premiumExpiresAt: expirationDate,
+              updatedAt: new Date(),
+            };
+
+            // If user already has premium that hasn't expired, extend it
+            if (hasActivePremium && user.premiumExpiresAt) {
+              const currentExpiration = new Date(user.premiumExpiresAt);
+              const newExpiration = new Date(currentExpiration);
+              newExpiration.setMonth(currentExpiration.getMonth() + planDuration);
+              updateFields.premiumExpiresAt = newExpiration;
+            }
+
+            const updateResult = await usersCollection.updateOne(
+              { email: normalizedEmail },
+              { $set: updateFields }
+            );
 
               if (updateResult.matchedCount > 0) {
+                const expirationDate = updateFields.premiumExpiresAt;
+                const expirationDateStr = expirationDate
+                  ? new Date(expirationDate).toLocaleDateString("mn-MN", {
+                      year: "numeric",
+                      month: "long",
+                      day: "numeric",
+                    })
+                  : null;
+
                 console.log(
-                  `✅ Premium activated for user: ${normalizedEmail}`
+                  `✅ Premium activated for user: ${normalizedEmail}, expires: ${expirationDateStr}`
                 );
 
                 // Send notification to user about successful payment
@@ -779,17 +855,28 @@ router.post("/payment/check", authenticate, async (req, res) => {
                     subdomain: subdomain,
                     type: "payment_success",
                     title: "Төлбөр амжилттай төлөгдлөө!",
-                    message: `Таны Premium эрх идэвхжлээ. Одоо та бүх контентыг хязгааргүй хандах боломжтой.`,
+                    message: `Таны Premium эрх идэвхжлээ. ${
+                      expirationDateStr
+                        ? `Дуусах хугацаа: ${expirationDateStr}`
+                        : "Одоо та бүх контентыг хязгааргүй хандах боломжтой."
+                    }`,
                     metadata: {
                       invoice_id: invoice_id,
                       amount: currentInvoice?.amount || 0,
                       currency: currentInvoice?.currency || "MNT",
-                      plan: currentInvoice?.description?.includes("Жилийн") ? "yearly" : "monthly",
+                      plan: planName || "monthly",
+                      duration: planDuration,
+                      expiresAt: expirationDate,
                     },
                   });
-                  console.log(`📧 Payment success notification sent to user: ${normalizedEmail}`);
+                  console.log(
+                    `📧 Payment success notification sent to user: ${normalizedEmail}`
+                  );
                 } catch (notifyError) {
-                  console.error("Failed to send payment notification:", notifyError);
+                  console.error(
+                    "Failed to send payment notification:",
+                    notifyError
+                  );
                   // Don't fail the request if notification fails
                 }
               } else {
@@ -817,9 +904,14 @@ router.post("/payment/check", authenticate, async (req, res) => {
                     currency: currentInvoice?.currency || "MNT",
                   },
                 });
-                console.log(`📧 Payment success notification sent to user: ${normalizedEmail}`);
+                console.log(
+                  `📧 Payment success notification sent to user: ${normalizedEmail}`
+                );
               } catch (notifyError) {
-                console.error("Failed to send payment notification:", notifyError);
+                console.error(
+                  "Failed to send payment notification:",
+                  notifyError
+                );
               }
             }
           } else {
