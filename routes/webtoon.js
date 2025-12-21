@@ -603,4 +603,385 @@ router.delete("/chapter/:id", authenticate, async (req, res) => {
 
 // NOTE: Novel routes have been moved to /api2/novel - see routes/novel.js
 
+// ============================================================================
+// FAVORITES ENDPOINTS
+// ============================================================================
+
+const Favorite = require("../models/Favorite");
+const ReadingHistory = require("../models/ReadingHistory");
+const { ObjectId } = require("mongodb");
+
+// @route   GET /api2/webtoon/user/favorites
+// @desc    Get user's favorites
+// @access  Private
+router.get("/user/favorites", authenticate, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const subdomain = req.subdomain;
+    const { page = 1, limit = 20 } = req.query;
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    // Get favorites
+    const favorites = await Favorite.find({
+      user: new ObjectId(userId),
+      subdomain: subdomain,
+    })
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit))
+      .lean();
+
+    // Populate comic and novel data
+    const comicCollection = req.db.collection("Comic");
+    const novelCollection = req.db.collection("Novel");
+
+    const populatedFavorites = await Promise.all(
+      favorites.map(async (favorite) => {
+        if (favorite.comicId) {
+          const comic = await comicCollection.findOne({
+            _id: favorite.comicId,
+            subdomain: subdomain,
+          });
+          return {
+            ...favorite,
+            type: "comic",
+            comic: comic || null,
+          };
+        } else if (favorite.novelId) {
+          const novel = await novelCollection.findOne({
+            _id: favorite.novelId,
+            subdomain: subdomain,
+          });
+          return {
+            ...favorite,
+            type: "novel",
+            novel: novel || null,
+          };
+        }
+        return favorite;
+      })
+    );
+
+    // Filter out favorites where the comic/novel doesn't exist
+    const validFavorites = populatedFavorites.filter(
+      (fav) => (fav.type === "comic" && fav.comic) || (fav.type === "novel" && fav.novel)
+    );
+
+    const total = await Favorite.countDocuments({
+      user: new ObjectId(userId),
+      subdomain: subdomain,
+    });
+
+    res.json({
+      success: true,
+      favorites: validFavorites,
+      total,
+      page: parseInt(page),
+      limit: parseInt(limit),
+      pages: Math.ceil(total / parseInt(limit)),
+    });
+  } catch (error) {
+    console.error("Get favorites error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to get favorites",
+      error: error.message,
+    });
+  }
+});
+
+// @route   POST /api2/webtoon/user/favorites
+// @desc    Add a favorite
+// @access  Private
+router.post("/user/favorites", authenticate, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const subdomain = req.subdomain;
+    const { comicId, novelId } = req.body;
+
+    if (!comicId && !novelId) {
+      return res.status(400).json({
+        success: false,
+        message: "Either comicId or novelId is required",
+      });
+    }
+
+    // Check if already favorited
+    const existing = await Favorite.findOne({
+      user: new ObjectId(userId),
+      subdomain: subdomain,
+      ...(comicId ? { comicId: new ObjectId(comicId) } : { novelId: new ObjectId(novelId) }),
+    });
+
+    if (existing) {
+      return res.json({
+        success: true,
+        message: "Already in favorites",
+        favorite: existing,
+      });
+    }
+
+    // Create favorite
+    const favorite = new Favorite({
+      user: new ObjectId(userId),
+      subdomain: subdomain,
+      ...(comicId ? { comicId: new ObjectId(comicId) } : { novelId: new ObjectId(novelId) }),
+    });
+
+    await favorite.save();
+
+    res.status(201).json({
+      success: true,
+      message: "Added to favorites",
+      favorite,
+    });
+  } catch (error) {
+    console.error("Add favorite error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to add favorite",
+      error: error.message,
+    });
+  }
+});
+
+// @route   DELETE /api2/webtoon/user/favorites/:id
+// @desc    Remove a favorite
+// @access  Private
+router.delete("/user/favorites/:id", authenticate, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const subdomain = req.subdomain;
+    const favoriteId = req.params.id;
+
+    const favorite = await Favorite.findOneAndDelete({
+      _id: favoriteId,
+      user: new ObjectId(userId),
+      subdomain: subdomain,
+    });
+
+    if (!favorite) {
+      return res.status(404).json({
+        success: false,
+        message: "Favorite not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Removed from favorites",
+    });
+  } catch (error) {
+    console.error("Remove favorite error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to remove favorite",
+      error: error.message,
+    });
+  }
+});
+
+// ============================================================================
+// READING HISTORY ENDPOINTS
+// ============================================================================
+
+// @route   GET /api2/webtoon/user/history
+// @desc    Get user's reading history
+// @access  Private
+router.get("/user/history", authenticate, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const subdomain = req.subdomain;
+    const { page = 1, limit = 20 } = req.query;
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    // Get reading history
+    const history = await ReadingHistory.find({
+      user: new ObjectId(userId),
+      subdomain: subdomain,
+    })
+      .sort({ lastReadAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit))
+      .lean();
+
+    // Populate comic and novel data
+    const comicCollection = req.db.collection("Comic");
+    const novelCollection = req.db.collection("Novel");
+    const chapterCollection = req.db.collection("Chapter");
+    const novelChapterCollection = req.db.collection("NovelChapter");
+
+    const populatedHistory = await Promise.all(
+      history.map(async (item) => {
+        if (item.comicId) {
+          const comic = await comicCollection.findOne({
+            _id: item.comicId,
+            subdomain: subdomain,
+          });
+          let chapter = null;
+          if (item.chapterId) {
+            chapter = await chapterCollection.findOne({
+              _id: item.chapterId,
+            });
+          }
+          return {
+            ...item,
+            type: "comic",
+            comic: comic || null,
+            chapter: chapter || null,
+          };
+        } else if (item.novelId) {
+          const novel = await novelCollection.findOne({
+            _id: item.novelId,
+            subdomain: subdomain,
+          });
+          let chapter = null;
+          if (item.novelChapterId) {
+            chapter = await novelChapterCollection.findOne({
+              _id: item.novelChapterId,
+            });
+          }
+          return {
+            ...item,
+            type: "novel",
+            novel: novel || null,
+            chapter: chapter || null,
+          };
+        }
+        return item;
+      })
+    );
+
+    // Filter out history items where the comic/novel doesn't exist
+    const validHistory = populatedHistory.filter(
+      (item) => (item.type === "comic" && item.comic) || (item.type === "novel" && item.novel)
+    );
+
+    const total = await ReadingHistory.countDocuments({
+      user: new ObjectId(userId),
+      subdomain: subdomain,
+    });
+
+    res.json({
+      success: true,
+      history: validHistory,
+      total,
+      page: parseInt(page),
+      limit: parseInt(limit),
+      pages: Math.ceil(total / parseInt(limit)),
+    });
+  } catch (error) {
+    console.error("Get reading history error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to get reading history",
+      error: error.message,
+    });
+  }
+});
+
+// @route   POST /api2/webtoon/user/history
+// @desc    Add or update reading history
+// @access  Private
+router.post("/user/history", authenticate, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const subdomain = req.subdomain;
+    const { comicId, novelId, chapterId, novelChapterId, progress } = req.body;
+
+    if (!comicId && !novelId) {
+      return res.status(400).json({
+        success: false,
+        message: "Either comicId or novelId is required",
+      });
+    }
+
+    // Find existing history entry
+    const existing = await ReadingHistory.findOne({
+      user: new ObjectId(userId),
+      subdomain: subdomain,
+      ...(comicId ? { comicId: new ObjectId(comicId) } : { novelId: new ObjectId(novelId) }),
+    });
+
+    if (existing) {
+      // Update existing entry
+      existing.lastReadAt = new Date();
+      if (chapterId) existing.chapterId = new ObjectId(chapterId);
+      if (novelChapterId) existing.novelChapterId = new ObjectId(novelChapterId);
+      if (progress !== undefined) existing.progress = progress;
+      await existing.save();
+
+      return res.json({
+        success: true,
+        message: "Reading history updated",
+        history: existing,
+      });
+    }
+
+    // Create new history entry
+    const history = new ReadingHistory({
+      user: new ObjectId(userId),
+      subdomain: subdomain,
+      ...(comicId ? { comicId: new ObjectId(comicId) } : { novelId: new ObjectId(novelId) }),
+      ...(chapterId ? { chapterId: new ObjectId(chapterId) } : {}),
+      ...(novelChapterId ? { novelChapterId: new ObjectId(novelChapterId) } : {}),
+      progress: progress || 0,
+      lastReadAt: new Date(),
+    });
+
+    await history.save();
+
+    res.status(201).json({
+      success: true,
+      message: "Reading history added",
+      history,
+    });
+  } catch (error) {
+    console.error("Add reading history error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to add reading history",
+      error: error.message,
+    });
+  }
+});
+
+// @route   DELETE /api2/webtoon/user/history/:id
+// @desc    Remove a reading history entry
+// @access  Private
+router.delete("/user/history/:id", authenticate, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const subdomain = req.subdomain;
+    const historyId = req.params.id;
+
+    const history = await ReadingHistory.findOneAndDelete({
+      _id: historyId,
+      user: new ObjectId(userId),
+      subdomain: subdomain,
+    });
+
+    if (!history) {
+      return res.status(404).json({
+        success: false,
+        message: "Reading history not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Removed from reading history",
+    });
+  } catch (error) {
+    console.error("Remove reading history error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to remove reading history",
+      error: error.message,
+    });
+  }
+});
+
 module.exports = router;
