@@ -599,15 +599,22 @@ router.post("/payment/check", authenticate, async (req, res) => {
       invoice_id
     );
 
+    // Log the full QPay response for debugging
+    console.log("🔍 QPay API Response:", JSON.stringify(result, null, 2));
+
     // Extract payment status from QPay response
     // QPay API returns status in different possible fields
-    let paymentStatus = result.payment_status || result.status;
-
+    // Priority: invoice_status (top level) > payment_status > status > nested fields
+    let paymentStatus = 
+      result.invoice_status || 
+      result.payment_status || 
+      result.status;
+    
     // Check if payment_data contains invoice_status
     if (!paymentStatus && result.payment_data?.invoice_status) {
       paymentStatus = result.payment_data.invoice_status;
     }
-
+    
     // Check if payments array has status
     if (!paymentStatus && result.payment_data?.payments?.length > 0) {
       const firstPayment = result.payment_data.payments[0];
@@ -616,6 +623,8 @@ router.post("/payment/check", authenticate, async (req, res) => {
       }
     }
 
+    console.log("🔍 Extracted payment status:", paymentStatus);
+
     let status = "PENDING";
     if (
       paymentStatus === "PAID" ||
@@ -623,8 +632,12 @@ router.post("/payment/check", authenticate, async (req, res) => {
       paymentStatus === "SUCCESS"
     ) {
       status = "PAID";
+      console.log("✅ Payment status detected as PAID");
     } else if (paymentStatus === "CANCELLED" || paymentStatus === "cancelled") {
       status = "CANCELLED";
+      console.log("❌ Payment status detected as CANCELLED");
+    } else {
+      console.log(`⏳ Payment status is still PENDING (received: ${paymentStatus})`);
     }
 
     // Only update updatedAt if status actually changed
@@ -636,14 +649,24 @@ router.post("/payment/check", authenticate, async (req, res) => {
 
     if (previousStatus !== status) {
       updateFields.updatedAt = new Date();
+      console.log(`🔄 Status changed from ${previousStatus} to ${status}`);
+    } else {
+      console.log(`ℹ️ Status unchanged: ${status}`);
     }
 
-    await invoicesCollection.updateOne(
+    const updateResult = await invoicesCollection.updateOne(
       { invoice_id: invoice_id },
       {
         $set: updateFields,
       }
     );
+
+    console.log(`📝 Invoice update result:`, {
+      matchedCount: updateResult.matchedCount,
+      modifiedCount: updateResult.modifiedCount,
+      newStatus: status,
+      previousStatus: previousStatus,
+    });
 
     // If payment is PAID and status changed from PENDING to PAID, activate premium user
     if (status === "PAID" && previousStatus === "PENDING") {
