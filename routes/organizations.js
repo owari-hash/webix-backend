@@ -2,6 +2,49 @@ const express = require("express");
 const { authenticate, authorize } = require("../middleware/auth");
 const router = express.Router();
 
+// @route   GET /api2/organizations/premium-plans
+// @desc    Get active premium plans for current organization
+// @access  Public
+router.get("/premium-plans", async (req, res) => {
+  try {
+    const subdomain = req.subdomain;
+    const organizationCollection = req.centralDb.collection("Organization");
+
+    const organization = await organizationCollection.findOne(
+      { subdomain },
+      { projection: { premiumPlans: 1 } }
+    );
+
+    if (!organization) {
+      return res.status(403).json({
+        success: false,
+        message: "Organization not registered",
+        code: "ORGANIZATION_NOT_REGISTERED",
+        subdomain: subdomain,
+      });
+    }
+
+    // Filter only active plans and sort by order
+    const activePlans = (organization.premiumPlans || [])
+      .filter((plan) => plan.isActive !== false)
+      .sort((a, b) => (a.order || 0) - (b.order || 0));
+
+    res.json({
+      success: true,
+      data: {
+        plans: activePlans,
+      },
+    });
+  } catch (error) {
+    console.error("Get premium plans error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to get premium plans",
+      error: error.message,
+    });
+  }
+});
+
 // @route   GET /api2/organizations/license
 // @desc    Get current organization license info
 // @access  Public (or Private if you want to restrict)
