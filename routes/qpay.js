@@ -496,6 +496,12 @@ router.post("/payment/check", authenticate, async (req, res) => {
     const invoicesCollection = tenantDb.db.collection("invoices");
     const paymentStatus = result.payment_status || result.status;
 
+    // Get current invoice to check if status changed
+    const currentInvoice = await invoicesCollection.findOne({
+      invoice_id: invoice_id,
+    });
+    const previousStatus = currentInvoice?.status || "PENDING";
+
     let status = "PENDING";
     if (paymentStatus === "PAID" || paymentStatus === "paid") {
       status = "PAID";
@@ -503,17 +509,83 @@ router.post("/payment/check", authenticate, async (req, res) => {
       status = "CANCELLED";
     }
 
+    // Only update updatedAt if status actually changed
+    const updateFields = {
+      status: status,
+      payment_status: paymentStatus,
+      payment_data: result,
+    };
+
+    if (previousStatus !== status) {
+      updateFields.updatedAt = new Date();
+    }
+
     await invoicesCollection.updateOne(
       { invoice_id: invoice_id },
       {
-        $set: {
-          status: status,
-          payment_status: paymentStatus,
-          payment_data: result,
-          updatedAt: new Date(),
-        },
+        $set: updateFields,
       }
     );
+
+    // If payment is PAID and status changed from PENDING to PAID, activate premium user
+    if (status === "PAID" && previousStatus === "PENDING") {
+      try {
+        // Extract email from payment description
+        // Format: "Premium Сарын багц - jrrsenpai@gmail.com"
+        let userEmail = null;
+
+        // Try to extract from payment_data.payments[0].payment_description
+        if (
+          result.payment_data?.payments &&
+          result.payment_data.payments.length > 0
+        ) {
+          const paymentDescription =
+            result.payment_data.payments[0].payment_description || "";
+          // Extract email using regex (format: "text - email@domain.com")
+          const emailMatch = paymentDescription.match(
+            /-?\s*([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/
+          );
+          if (emailMatch && emailMatch[1]) {
+            userEmail = emailMatch[1].trim();
+          }
+        }
+
+        // Fallback: try to extract from invoice description
+        if (!userEmail && currentInvoice?.description) {
+          const emailMatch = currentInvoice.description.match(
+            /-?\s*([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/
+          );
+          if (emailMatch && emailMatch[1]) {
+            userEmail = emailMatch[1].trim();
+          }
+        }
+
+        // If email found, activate premium for the user
+        if (userEmail) {
+          const usersCollection = tenantDb.db.collection("users");
+          const updateResult = await usersCollection.updateOne(
+            { email: userEmail.toLowerCase() },
+            {
+              $set: {
+                premium: true,
+                updatedAt: new Date(),
+              },
+            }
+          );
+
+          if (updateResult.matchedCount > 0) {
+            console.log(`✅ Premium activated for user: ${userEmail}`);
+          } else {
+            console.log(`⚠️ User not found with email: ${userEmail}`);
+          }
+        } else {
+          console.log("⚠️ Could not extract email from payment description");
+        }
+      } catch (premiumError) {
+        console.error("Error activating premium:", premiumError);
+        // Don't fail the payment check if premium activation fails
+      }
+    }
 
     res.json({
       success: true,
