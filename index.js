@@ -377,7 +377,7 @@ const {
   publicLimiter,
 } = require("./middleware/rateLimiter");
 
-// Serve uploaded files as static
+// Serve uploaded files as static (with subdomain organization)
 app.use(
   "/uploads",
   express.static("uploads", {

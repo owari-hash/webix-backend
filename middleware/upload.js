@@ -2,21 +2,33 @@ const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 
-// Create uploads directory if it doesn't exist
-const uploadDir = "uploads";
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
+// Base uploads directory
+const baseUploadDir = "uploads";
+
+// Create base uploads directory if it doesn't exist
+if (!fs.existsSync(baseUploadDir)) {
+  fs.mkdirSync(baseUploadDir, { recursive: true });
 }
 
-// Configure storage
+// Configure storage with subdomain organization
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
+    // Organize by subdomain if available, otherwise use 'default'
+    const subdomain = req.subdomain || "default";
+    const uploadDir = path.join(baseUploadDir, subdomain);
+    
+    // Create subdomain directory if it doesn't exist
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    
     cb(null, uploadDir);
   },
   filename: function (req, file, cb) {
     // Generate unique filename: timestamp-randomstring-originalname
     const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    cb(null, uniqueSuffix + path.extname(file.originalname));
+    const ext = path.extname(file.originalname) || ".jpg";
+    cb(null, uniqueSuffix + ext);
   },
 });
 
