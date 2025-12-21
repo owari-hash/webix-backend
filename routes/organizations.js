@@ -16,9 +16,11 @@ router.get("/license", async (req, res) => {
     );
 
     if (!organization) {
-      return res.status(404).json({
+      return res.status(403).json({
         success: false,
-        message: "Organization not found",
+        message: "Organization not registered",
+        code: "ORGANIZATION_NOT_REGISTERED",
+        subdomain: subdomain,
       });
     }
 
@@ -592,9 +594,11 @@ router.get("/license", async (req, res) => {
     );
 
     if (!organization) {
-      return res.status(404).json({
+      return res.status(403).json({
         success: false,
-        message: "Organization not found",
+        message: "Organization not registered",
+        code: "ORGANIZATION_NOT_REGISTERED",
+        subdomain: subdomain,
       });
     }
 
