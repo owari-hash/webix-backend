@@ -61,6 +61,19 @@ function buildCommentsAggregationPipeline(
         from: "User",
         localField: "author",
         foreignField: "_id",
+        pipeline: [
+          {
+            $project: {
+              name: 1,
+              displayName: 1,
+              username: 1,
+              email: 1,
+              avatar: 1,
+              firstName: 1,
+              lastName: 1,
+            },
+          },
+        ],
         as: "authorData",
       },
     },
@@ -88,6 +101,19 @@ function buildCommentsAggregationPipeline(
               from: "User",
               localField: "author",
               foreignField: "_id",
+              pipeline: [
+                {
+                  $project: {
+                    name: 1,
+                    displayName: 1,
+                    username: 1,
+                    email: 1,
+                    avatar: 1,
+                    firstName: 1,
+                    lastName: 1,
+                  },
+                },
+              ],
               as: "authorData",
             },
           },
@@ -123,7 +149,47 @@ function buildCommentsAggregationPipeline(
                   if: { $gt: [{ $size: "$authorData" }, 0] },
                   then: {
                     id: { $arrayElemAt: ["$authorData._id", 0] },
-                    name: { $arrayElemAt: ["$authorData.name", 0] },
+                    name: {
+                      $cond: {
+                        if: { $ne: [{ $arrayElemAt: ["$authorData.name", 0] }, null] },
+                        then: { $arrayElemAt: ["$authorData.name", 0] },
+                        else: {
+                          $cond: {
+                            if: { $ne: [{ $arrayElemAt: ["$authorData.displayName", 0] }, null] },
+                            then: { $arrayElemAt: ["$authorData.displayName", 0] },
+                            else: {
+                              $cond: {
+                                if: { $ne: [{ $arrayElemAt: ["$authorData.username", 0] }, null] },
+                                then: { $arrayElemAt: ["$authorData.username", 0] },
+                                else: {
+                                  $let: {
+                                    vars: {
+                                      email: { $arrayElemAt: ["$authorData.email", 0] },
+                                    },
+                                    in: {
+                                      $cond: {
+                                        if: { $ne: ["$$email", null] },
+                                        then: {
+                                          $arrayElemAt: [
+                                            {
+                                              $split: ["$$email", "@"],
+                                            },
+                                            0,
+                                          ],
+                                        },
+                                        else: "Нэргүй хэрэглэгч",
+                                      },
+                                    },
+                                  },
+                                },
+                              },
+                            },
+                          },
+                        },
+                      },
+                    },
+                    displayName: { $arrayElemAt: ["$authorData.displayName", 0] },
+                    username: { $arrayElemAt: ["$authorData.username", 0] },
                     email: { $arrayElemAt: ["$authorData.email", 0] },
                     avatar: { $arrayElemAt: ["$authorData.avatar", 0] },
                   },
@@ -229,7 +295,47 @@ function buildCommentsAggregationPipeline(
             if: { $gt: [{ $size: "$authorData" }, 0] },
             then: {
               id: { $arrayElemAt: ["$authorData._id", 0] },
-              name: { $arrayElemAt: ["$authorData.name", 0] },
+              name: {
+                $cond: {
+                  if: { $ne: [{ $arrayElemAt: ["$authorData.name", 0] }, null] },
+                  then: { $arrayElemAt: ["$authorData.name", 0] },
+                  else: {
+                    $cond: {
+                      if: { $ne: [{ $arrayElemAt: ["$authorData.displayName", 0] }, null] },
+                      then: { $arrayElemAt: ["$authorData.displayName", 0] },
+                      else: {
+                        $cond: {
+                          if: { $ne: [{ $arrayElemAt: ["$authorData.username", 0] }, null] },
+                          then: { $arrayElemAt: ["$authorData.username", 0] },
+                          else: {
+                            $let: {
+                              vars: {
+                                email: { $arrayElemAt: ["$authorData.email", 0] },
+                              },
+                              in: {
+                                $cond: {
+                                  if: { $ne: ["$$email", null] },
+                                  then: {
+                                    $arrayElemAt: [
+                                      {
+                                        $split: ["$$email", "@"],
+                                      },
+                                      0,
+                                    ],
+                                  },
+                                  else: "Нэргүй хэрэглэгч",
+                                },
+                              },
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+              displayName: { $arrayElemAt: ["$authorData.displayName", 0] },
+              username: { $arrayElemAt: ["$authorData.username", 0] },
               email: { $arrayElemAt: ["$authorData.email", 0] },
               avatar: { $arrayElemAt: ["$authorData.avatar", 0] },
             },

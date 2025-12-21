@@ -498,7 +498,7 @@ async function populateAuthor(db, authorId) {
 
   let author = await usersCollection.findOne(
     { _id: authorId },
-    { projection: { name: 1, email: 1, avatar: 1 } }
+    { projection: { name: 1, displayName: 1, username: 1, email: 1, avatar: 1, firstName: 1, lastName: 1 } }
   );
 
   if (!author) {
@@ -507,6 +507,8 @@ async function populateAuthor(db, authorId) {
       {
         projection: {
           name: 1,
+          displayName: 1,
+          username: 1,
           email: 1,
           avatar: 1,
           firstName: 1,
@@ -514,19 +516,35 @@ async function populateAuthor(db, authorId) {
         },
       }
     );
-    if (author && (author.firstName || author.lastName)) {
-      author.name = `${author.firstName || ""} ${author.lastName || ""}`.trim();
-    }
   }
 
-  return author
-    ? {
-        id: author._id,
-        name: author.name,
-        email: author.email,
-        avatar: author.avatar,
-      }
-    : null;
+  if (!author) {
+    return null;
+  }
+
+  // Determine the best name to use
+  let authorName = author.name;
+  if (!authorName && (author.firstName || author.lastName)) {
+    authorName = `${author.firstName || ""} ${author.lastName || ""}`.trim();
+  }
+  if (!authorName) {
+    authorName = author.displayName;
+  }
+  if (!authorName) {
+    authorName = author.username;
+  }
+  if (!authorName && author.email) {
+    authorName = author.email.split('@')[0];
+  }
+
+  return {
+    id: author._id,
+    name: authorName || 'Нэргүй хэрэглэгч',
+    displayName: author.displayName,
+    username: author.username,
+    email: author.email,
+    avatar: author.avatar,
+  };
 }
 
 // Helper function to fetch replies for a comment
