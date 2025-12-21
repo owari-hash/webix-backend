@@ -367,6 +367,63 @@ router.get("/comic/:id", async (req, res) => {
   }
 });
 
+// @route   GET /api2/webtoon/comic/:comicId/chapter
+// @desc    Get latest chapter of a comic (alias for convenience)
+// @access  Public
+router.get("/comic/:comicId/chapter", async (req, res) => {
+  try {
+    const { ObjectId } = require("mongodb");
+
+    // Validate ObjectId
+    if (!isValidObjectId(req.params.comicId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid comic ID format",
+        error: "ID must be a valid 24-character hex string",
+      });
+    }
+
+    const collection = req.db.collection("Chapter");
+
+    // Get the latest chapter (highest chapter number)
+    const latestChapter = await collection
+      .findOne(
+        { comicId: new ObjectId(req.params.comicId) },
+        { sort: { chapterNumber: -1 } }
+      );
+
+    if (!latestChapter) {
+      return res.status(404).json({
+        success: false,
+        message: "No chapters found for this comic",
+      });
+    }
+
+    // Convert base64 images to file URLs if needed
+    if (latestChapter.images && Array.isArray(latestChapter.images)) {
+      latestChapter.images = await convertBase64ImagesToUrls(req, latestChapter.images);
+      
+      // Update the chapter in database with converted URLs (one-time migration)
+      await collection.updateOne(
+        { _id: latestChapter._id },
+        { $set: { images: latestChapter.images } }
+      );
+    }
+
+    res.json({
+      success: true,
+      chapter: latestChapter,
+    });
+  } catch (error) {
+    console.error("Get latest chapter error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to get latest chapter",
+      error: error.message,
+    });
+  }
+});
+
 // @route   GET /api2/webtoon/comic/:comicId/chapters
 // @desc    Get all chapters of a comic
 // @access  Public
@@ -390,10 +447,33 @@ router.get("/comic/:comicId/chapters", async (req, res) => {
       .sort({ chapterNumber: 1 })
       .toArray();
 
+    // Convert base64 images to file URLs for all chapters
+    const chaptersWithUrls = await Promise.all(
+      chapters.map(async (chapter) => {
+        if (chapter.images && Array.isArray(chapter.images)) {
+          const convertedImages = await convertBase64ImagesToUrls(req, chapter.images);
+          
+          // Update chapter in database with converted URLs (one-time migration)
+          if (convertedImages.some((img, idx) => img !== chapter.images[idx])) {
+            await collection.updateOne(
+              { _id: chapter._id },
+              { $set: { images: convertedImages } }
+            );
+          }
+          
+          return {
+            ...chapter,
+            images: convertedImages,
+          };
+        }
+        return chapter;
+      })
+    );
+
     res.json({
       success: true,
-      count: chapters.length,
-      chapters,
+      count: chaptersWithUrls.length,
+      chapters: chaptersWithUrls,
     });
   } catch (error) {
     console.error("Get chapters error:", error);
@@ -404,6 +484,79 @@ router.get("/comic/:comicId/chapters", async (req, res) => {
     });
   }
 });
+
+// Helper function to convert base64 images to file URLs
+async function convertBase64ImagesToUrls(req, images) {
+  if (!Array.isArray(images)) return images;
+  
+  const fs = require("fs");
+  const path = require("path");
+  const { ObjectId } = require("mongodb");
+  
+  const convertedImages = await Promise.all(
+    images.map(async (image) => {
+      // If already a URL, return as is
+      if (typeof image === "string" && (image.startsWith("http") || image.startsWith("/uploads"))) {
+        return image;
+      }
+      
+      // If it's a base64 image, convert it
+      if (typeof image === "string" && (image.startsWith("data:image") || image.length > 1000)) {
+        try {
+          // Extract base64 data
+          let base64Data = image;
+          let mimeType = "image/jpeg";
+          let ext = ".jpg";
+
+          if (image.startsWith("data:")) {
+            const matches = image.match(/^data:([^;]+);base64,(.+)$/);
+            if (matches) {
+              mimeType = matches[1];
+              base64Data = matches[2];
+              
+              if (mimeType.includes("png")) ext = ".png";
+              else if (mimeType.includes("gif")) ext = ".gif";
+              else if (mimeType.includes("webp")) ext = ".webp";
+            }
+          }
+
+          // Convert base64 to buffer
+          const buffer = Buffer.from(base64Data, "base64");
+
+          // Organize by subdomain
+          const subdomain = req.subdomain || "default";
+          const uploadDir = path.join("uploads", subdomain);
+          
+          // Create subdomain directory if it doesn't exist
+          if (!fs.existsSync(uploadDir)) {
+            fs.mkdirSync(uploadDir, { recursive: true });
+          }
+
+          // Generate unique filename
+          const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+          const finalFilename = `${uniqueSuffix}${ext}`;
+          
+          const filePath = path.join(uploadDir, finalFilename);
+
+          // Write file to disk
+          fs.writeFileSync(filePath, buffer);
+
+          // Return file URL
+          const fileUrl = `${req.protocol}://${req.get("host")}/uploads/${subdomain}/${finalFilename}`;
+          
+          return fileUrl;
+        } catch (error) {
+          console.error("Error converting base64 image:", error);
+          return image; // Return original if conversion fails
+        }
+      }
+      
+      return image;
+    })
+  );
+  
+  return convertedImages;
+}
 
 // @route   GET /api2/webtoon/chapter/:id
 // @desc    Get single chapter
@@ -432,6 +585,17 @@ router.get("/chapter/:id", async (req, res) => {
         success: false,
         message: "Chapter not found",
       });
+    }
+
+    // Convert base64 images to file URLs if needed
+    if (chapter.images && Array.isArray(chapter.images)) {
+      chapter.images = await convertBase64ImagesToUrls(req, chapter.images);
+      
+      // Update the chapter in database with converted URLs (one-time migration)
+      await collection.updateOne(
+        { _id: new ObjectId(req.params.id) },
+        { $set: { images: chapter.images } }
+      );
     }
 
     // Increment view count
