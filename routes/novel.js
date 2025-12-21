@@ -79,16 +79,35 @@ router.post("/", authenticate, async (req, res) => {
 });
 
 // @route   GET /api2/novel
-// @desc    Get all novels
+// @desc    Get all novels with pagination
 // @access  Public
 router.get("/", async (req, res) => {
   try {
     const collection = req.db.collection("Novel");
-    const novels = await collection.find({}).sort({ createdAt: -1 }).toArray();
+    
+    // Pagination parameters
+    const page = parseInt(req.query.page) || 1;
+    const limit = Math.min(parseInt(req.query.limit) || 20, 100); // Max 100 per page
+    const skip = (page - 1) * limit;
+
+    // Get total count
+    const total = await collection.countDocuments({});
+
+    // Get paginated novels
+    const novels = await collection
+      .find({})
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .toArray();
 
     res.json({
       success: true,
       count: novels.length,
+      total,
+      page,
+      limit,
+      pages: Math.ceil(total / limit),
       data: novels,
       novels,
     });

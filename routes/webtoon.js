@@ -92,16 +92,35 @@ router.post("/comic", authenticate, async (req, res) => {
 });
 
 // @route   GET /api2/webtoon/comics
-// @desc    Get all comics
+// @desc    Get all comics with pagination
 // @access  Public
 router.get("/comics", async (req, res) => {
   try {
     const collection = req.db.collection("Comic");
-    const comics = await collection.find({}).sort({ createdAt: -1 }).toArray();
+    
+    // Pagination parameters
+    const page = parseInt(req.query.page) || 1;
+    const limit = Math.min(parseInt(req.query.limit) || 20, 100); // Max 100 per page
+    const skip = (page - 1) * limit;
+
+    // Get total count
+    const total = await collection.countDocuments({});
+
+    // Get paginated comics
+    const comics = await collection
+      .find({})
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .toArray();
 
     res.json({
       success: true,
       count: comics.length,
+      total,
+      page,
+      limit,
+      pages: Math.ceil(total / limit),
       comics,
     });
   } catch (error) {
