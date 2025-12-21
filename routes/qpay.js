@@ -96,7 +96,7 @@ router.post("/invoice", authenticate, async (req, res) => {
               method: "Production",
               steps: [
                 "1. Deploy your backend with a public HTTPS URL",
-                "2. Set QPAY_CALLBACK_URL=https://your-domain.com/api2/qpay/callback",
+                "2. Set QPAY_CALLBACK_URL=https://anzaidev.fun/api2/qpay/callback",
               ],
             },
           ],
@@ -131,12 +131,22 @@ router.post("/invoice", authenticate, async (req, res) => {
         customer_logo: invoiceData.customer_logo,
       }),
       ...(invoiceData.mcc_code && { mcc_code: invoiceData.mcc_code }),
-      // Bank accounts - include if provided, otherwise use default from env or organization
+      // Bank accounts - use from organization, invoice data, or fallback to env/default
       bank_accounts:
         invoiceData.bank_accounts &&
         Array.isArray(invoiceData.bank_accounts) &&
         invoiceData.bank_accounts.length > 0
           ? invoiceData.bank_accounts
+          : organization.qpay?.bank_accounts &&
+            Array.isArray(organization.qpay.bank_accounts) &&
+            organization.qpay.bank_accounts.length > 0
+          ? organization.qpay.bank_accounts.map((account) => ({
+              account_bank_code: account.account_bank_code,
+              account_number: account.account_number,
+              account_name: account.account_name,
+              is_default:
+                account.is_default !== undefined ? account.is_default : false,
+            }))
           : [
               {
                 account_bank_code: process.env.QPAY_BANK_CODE || "050000",
