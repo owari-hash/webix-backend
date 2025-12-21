@@ -97,7 +97,7 @@ router.post("/comic", authenticate, async (req, res) => {
 router.get("/comics", async (req, res) => {
   try {
     const collection = req.db.collection("Comic");
-    
+
     // Pagination parameters
     const page = parseInt(req.query.page) || 1;
     const limit = Math.min(parseInt(req.query.limit) || 20, 100); // Max 100 per page
@@ -236,11 +236,31 @@ router.delete("/comic/:id", authenticate, async (req, res) => {
 // @access  Private
 router.post("/comic/:comicId/chapter", authenticate, async (req, res) => {
   try {
+    console.log(
+      `📥 [Chapter Create] POST /api2/webtoon/comic/${req.params.comicId}/chapter`
+    );
+    console.log(`📥 [Chapter Create] Subdomain: ${req.subdomain}`);
+    console.log(
+      `📥 [Chapter Create] Request body keys:`,
+      Object.keys(req.body)
+    );
+
     const { ObjectId } = require("mongodb");
     const { chapterNumber, title, images } = req.body;
     const { comicId } = req.params;
 
+    console.log(
+      `📥 [Chapter Create] Chapter number: ${chapterNumber}, Title: ${title}, Images count: ${
+        images?.length || 0
+      }`
+    );
+
     if (!chapterNumber || !title || !images || !Array.isArray(images)) {
+      console.error(
+        `❌ [Chapter Create] Validation failed: chapterNumber=${!!chapterNumber}, title=${!!title}, images=${!!images}, isArray=${Array.isArray(
+          images
+        )}`
+      );
       return res.status(400).json({
         success: false,
         message: "Chapter number, title, and images array are required",
@@ -248,10 +268,30 @@ router.post("/comic/:comicId/chapter", authenticate, async (req, res) => {
     }
 
     if (images.length === 0) {
+      console.error(`❌ [Chapter Create] No images provided`);
       return res.status(400).json({
         success: false,
         message: "At least one image is required",
       });
+    }
+
+    // Calculate payload size
+    const payloadSize = JSON.stringify(req.body).length;
+    const payloadMB = (payloadSize / (1024 * 1024)).toFixed(2);
+    console.log(
+      `📥 [Chapter Create] Payload size: ~${payloadMB}MB, Images: ${images.length}`
+    );
+
+    // Check if images are base64
+    const base64Count = images.filter(
+      (img) =>
+        typeof img === "string" &&
+        (img.startsWith("data:image") || img.length > 1000)
+    ).length;
+    if (base64Count > 0) {
+      console.log(
+        `⚠️ [Chapter Create] Warning: ${base64Count} base64 images detected (should be converted to file URLs)`
+      );
     }
 
     // Check if comic exists
@@ -294,7 +334,11 @@ router.post("/comic/:comicId/chapter", authenticate, async (req, res) => {
       updatedAt: new Date(),
     };
 
+    console.log(`💾 [Chapter Create] Inserting chapter into database...`);
     const result = await chapterCollection.insertOne(chapter);
+    console.log(
+      `✅ [Chapter Create] Chapter created successfully with ID: ${result.insertedId}`
+    );
 
     res.status(201).json({
       success: true,
@@ -305,7 +349,8 @@ router.post("/comic/:comicId/chapter", authenticate, async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Add chapter error:", error);
+    console.error("❌ [Chapter Create] Add chapter error:", error);
+    console.error("❌ [Chapter Create] Error stack:", error.stack);
     res.status(500).json({
       success: false,
       message: "Failed to add chapter",
@@ -386,11 +431,10 @@ router.get("/comic/:comicId/chapter", async (req, res) => {
     const collection = req.db.collection("Chapter");
 
     // Get the latest chapter (highest chapter number)
-    const latestChapter = await collection
-      .findOne(
-        { comicId: new ObjectId(req.params.comicId) },
-        { sort: { chapterNumber: -1 } }
-      );
+    const latestChapter = await collection.findOne(
+      { comicId: new ObjectId(req.params.comicId) },
+      { sort: { chapterNumber: -1 } }
+    );
 
     if (!latestChapter) {
       return res.status(404).json({
@@ -401,8 +445,11 @@ router.get("/comic/:comicId/chapter", async (req, res) => {
 
     // Convert base64 images to file URLs if needed
     if (latestChapter.images && Array.isArray(latestChapter.images)) {
-      latestChapter.images = await convertBase64ImagesToUrls(req, latestChapter.images);
-      
+      latestChapter.images = await convertBase64ImagesToUrls(
+        req,
+        latestChapter.images
+      );
+
       // Update the chapter in database with converted URLs (one-time migration)
       await collection.updateOne(
         { _id: latestChapter._id },
@@ -451,8 +498,11 @@ router.get("/comic/:comicId/chapters", async (req, res) => {
     const chaptersWithUrls = await Promise.all(
       chapters.map(async (chapter) => {
         if (chapter.images && Array.isArray(chapter.images)) {
-          const convertedImages = await convertBase64ImagesToUrls(req, chapter.images);
-          
+          const convertedImages = await convertBase64ImagesToUrls(
+            req,
+            chapter.images
+          );
+
           // Update chapter in database with converted URLs (one-time migration)
           if (convertedImages.some((img, idx) => img !== chapter.images[idx])) {
             await collection.updateOne(
@@ -460,7 +510,7 @@ router.get("/comic/:comicId/chapters", async (req, res) => {
               { $set: { images: convertedImages } }
             );
           }
-          
+
           return {
             ...chapter,
             images: convertedImages,
@@ -488,20 +538,26 @@ router.get("/comic/:comicId/chapters", async (req, res) => {
 // Helper function to convert base64 images to file URLs
 async function convertBase64ImagesToUrls(req, images) {
   if (!Array.isArray(images)) return images;
-  
+
   const fs = require("fs");
   const path = require("path");
   const { ObjectId } = require("mongodb");
-  
+
   const convertedImages = await Promise.all(
     images.map(async (image) => {
       // If already a URL, return as is
-      if (typeof image === "string" && (image.startsWith("http") || image.startsWith("/uploads"))) {
+      if (
+        typeof image === "string" &&
+        (image.startsWith("http") || image.startsWith("/uploads"))
+      ) {
         return image;
       }
-      
+
       // If it's a base64 image, convert it
-      if (typeof image === "string" && (image.startsWith("data:image") || image.length > 1000)) {
+      if (
+        typeof image === "string" &&
+        (image.startsWith("data:image") || image.length > 1000)
+      ) {
         try {
           // Extract base64 data
           let base64Data = image;
@@ -513,7 +569,7 @@ async function convertBase64ImagesToUrls(req, images) {
             if (matches) {
               mimeType = matches[1];
               base64Data = matches[2];
-              
+
               if (mimeType.includes("png")) ext = ".png";
               else if (mimeType.includes("gif")) ext = ".gif";
               else if (mimeType.includes("webp")) ext = ".webp";
@@ -526,35 +582,38 @@ async function convertBase64ImagesToUrls(req, images) {
           // Organize by subdomain
           const subdomain = req.subdomain || "default";
           const uploadDir = path.join("uploads", subdomain);
-          
+
           // Create subdomain directory if it doesn't exist
           if (!fs.existsSync(uploadDir)) {
             fs.mkdirSync(uploadDir, { recursive: true });
           }
 
           // Generate unique filename
-          const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+          const uniqueSuffix =
+            Date.now() + "-" + Math.round(Math.random() * 1e9);
           const finalFilename = `${uniqueSuffix}${ext}`;
-          
+
           const filePath = path.join(uploadDir, finalFilename);
 
           // Write file to disk
           fs.writeFileSync(filePath, buffer);
 
           // Return file URL
-          const fileUrl = `${req.protocol}://${req.get("host")}/uploads/${subdomain}/${finalFilename}`;
-          
+          const fileUrl = `${req.protocol}://${req.get(
+            "host"
+          )}/uploads/${subdomain}/${finalFilename}`;
+
           return fileUrl;
         } catch (error) {
           console.error("Error converting base64 image:", error);
           return image; // Return original if conversion fails
         }
       }
-      
+
       return image;
     })
   );
-  
+
   return convertedImages;
 }
 
@@ -590,7 +649,7 @@ router.get("/chapter/:id", async (req, res) => {
     // Convert base64 images to file URLs if needed
     if (chapter.images && Array.isArray(chapter.images)) {
       chapter.images = await convertBase64ImagesToUrls(req, chapter.images);
-      
+
       // Update the chapter in database with converted URLs (one-time migration)
       await collection.updateOne(
         { _id: new ObjectId(req.params.id) },
@@ -664,8 +723,41 @@ router.put("/chapter/:id", authenticate, async (req, res) => {
 // @access  Private
 router.patch("/chapter/:id", authenticate, async (req, res) => {
   try {
+    console.log(
+      `📥 [Chapter Update] PATCH /api2/webtoon/chapter/${req.params.id}`
+    );
+    console.log(`📥 [Chapter Update] Subdomain: ${req.subdomain}`);
+    console.log(
+      `📥 [Chapter Update] Request body keys:`,
+      Object.keys(req.body)
+    );
+
     const { ObjectId } = require("mongodb");
     const { images, append } = req.body;
+
+    if (images) {
+      const payloadSize = JSON.stringify(req.body).length;
+      const payloadMB = (payloadSize / (1024 * 1024)).toFixed(2);
+      console.log(
+        `📥 [Chapter Update] Images count: ${
+          Array.isArray(images) ? images.length : "N/A"
+        }, Payload size: ~${payloadMB}MB, Append: ${append}`
+      );
+
+      if (Array.isArray(images)) {
+        const base64Count = images.filter(
+          (img) =>
+            typeof img === "string" &&
+            (img.startsWith("data:image") || img.length > 1000)
+        ).length;
+        if (base64Count > 0) {
+          console.log(
+            `⚠️ [Chapter Update] Warning: ${base64Count} base64 images detected (should be converted to file URLs)`
+          );
+        }
+      }
+    }
+
     const collection = req.db.collection("Chapter");
 
     // Find the chapter first
@@ -702,10 +794,20 @@ router.patch("/chapter/:id", authenticate, async (req, res) => {
       });
     }
 
+    console.log(
+      `💾 [Chapter Update] Updating chapter with operation:`,
+      append ? "APPEND" : "REPLACE"
+    );
     const result = await collection.findOneAndUpdate(
       { _id: new ObjectId(req.params.id) },
       updateOperation,
       { returnDocument: "after" }
+    );
+
+    console.log(
+      `✅ [Chapter Update] Chapter updated successfully. Total images: ${
+        result.value?.images?.length || 0
+      }`
     );
 
     res.json({
@@ -713,11 +815,12 @@ router.patch("/chapter/:id", authenticate, async (req, res) => {
       message: append
         ? `${images.length} images appended successfully`
         : "Images updated successfully",
-      chapter: result,
-      totalImages: result.images.length,
+      chapter: result.value,
+      totalImages: result.value?.images?.length || 0,
     });
   } catch (error) {
-    console.error("Append images error:", error);
+    console.error("❌ [Chapter Update] Append images error:", error);
+    console.error("❌ [Chapter Update] Error stack:", error.stack);
     res.status(500).json({
       success: false,
       message: "Failed to append images",
@@ -829,7 +932,9 @@ router.get("/user/favorites", authenticate, async (req, res) => {
 
     // Filter out favorites where the comic/novel doesn't exist
     const validFavorites = populatedFavorites.filter(
-      (fav) => (fav.type === "comic" && fav.comic) || (fav.type === "novel" && fav.novel)
+      (fav) =>
+        (fav.type === "comic" && fav.comic) ||
+        (fav.type === "novel" && fav.novel)
     );
 
     const total = await favoritesCollection.countDocuments({
@@ -876,7 +981,9 @@ router.post("/user/favorites", authenticate, async (req, res) => {
     const existing = await favoritesCollection.findOne({
       user: new ObjectId(userId),
       subdomain: subdomain,
-      ...(comicId ? { comicId: new ObjectId(comicId) } : { novelId: new ObjectId(novelId) }),
+      ...(comicId
+        ? { comicId: new ObjectId(comicId) }
+        : { novelId: new ObjectId(novelId) }),
     });
 
     if (existing) {
@@ -891,13 +998,17 @@ router.post("/user/favorites", authenticate, async (req, res) => {
     const favorite = {
       user: new ObjectId(userId),
       subdomain: subdomain,
-      ...(comicId ? { comicId: new ObjectId(comicId) } : { novelId: new ObjectId(novelId) }),
+      ...(comicId
+        ? { comicId: new ObjectId(comicId) }
+        : { novelId: new ObjectId(novelId) }),
       createdAt: new Date(),
       updatedAt: new Date(),
     };
 
     const result = await favoritesCollection.insertOne(favorite);
-    const insertedFavorite = await favoritesCollection.findOne({ _id: result.insertedId });
+    const insertedFavorite = await favoritesCollection.findOne({
+      _id: result.insertedId,
+    });
 
     res.status(201).json({
       success: true,
@@ -1027,7 +1138,9 @@ router.get("/user/history", authenticate, async (req, res) => {
 
     // Filter out history items where the comic/novel doesn't exist
     const validHistory = populatedHistory.filter(
-      (item) => (item.type === "comic" && item.comic) || (item.type === "novel" && item.novel)
+      (item) =>
+        (item.type === "comic" && item.comic) ||
+        (item.type === "novel" && item.novel)
     );
 
     const total = await readingHistoryCollection.countDocuments({
@@ -1074,7 +1187,9 @@ router.post("/user/history", authenticate, async (req, res) => {
     const existing = await readingHistoryCollection.findOne({
       user: new ObjectId(userId),
       subdomain: subdomain,
-      ...(comicId ? { comicId: new ObjectId(comicId) } : { novelId: new ObjectId(novelId) }),
+      ...(comicId
+        ? { comicId: new ObjectId(comicId) }
+        : { novelId: new ObjectId(novelId) }),
     });
 
     if (existing) {
@@ -1084,7 +1199,8 @@ router.post("/user/history", authenticate, async (req, res) => {
         updatedAt: new Date(),
       };
       if (chapterId) updateData.chapterId = new ObjectId(chapterId);
-      if (novelChapterId) updateData.novelChapterId = new ObjectId(novelChapterId);
+      if (novelChapterId)
+        updateData.novelChapterId = new ObjectId(novelChapterId);
       if (progress !== undefined) updateData.progress = progress;
 
       await readingHistoryCollection.updateOne(
@@ -1092,7 +1208,9 @@ router.post("/user/history", authenticate, async (req, res) => {
         { $set: updateData }
       );
 
-      const updatedHistory = await readingHistoryCollection.findOne({ _id: existing._id });
+      const updatedHistory = await readingHistoryCollection.findOne({
+        _id: existing._id,
+      });
 
       return res.json({
         success: true,
@@ -1105,9 +1223,13 @@ router.post("/user/history", authenticate, async (req, res) => {
     const history = {
       user: new ObjectId(userId),
       subdomain: subdomain,
-      ...(comicId ? { comicId: new ObjectId(comicId) } : { novelId: new ObjectId(novelId) }),
+      ...(comicId
+        ? { comicId: new ObjectId(comicId) }
+        : { novelId: new ObjectId(novelId) }),
       ...(chapterId ? { chapterId: new ObjectId(chapterId) } : {}),
-      ...(novelChapterId ? { novelChapterId: new ObjectId(novelChapterId) } : {}),
+      ...(novelChapterId
+        ? { novelChapterId: new ObjectId(novelChapterId) }
+        : {}),
       progress: progress || 0,
       lastReadAt: new Date(),
       createdAt: new Date(),
@@ -1115,7 +1237,9 @@ router.post("/user/history", authenticate, async (req, res) => {
     };
 
     const result = await readingHistoryCollection.insertOne(history);
-    const insertedHistory = await readingHistoryCollection.findOne({ _id: result.insertedId });
+    const insertedHistory = await readingHistoryCollection.findOne({
+      _id: result.insertedId,
+    });
 
     res.status(201).json({
       success: true,
