@@ -83,11 +83,11 @@ const authLimiter =
 
 /**
  * Rate limiter for upload endpoints
- * 10 requests per 15 minutes
+ * 200 requests per 15 minutes (increased to support bulk chapter image uploads)
  */
 const uploadLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10,
+  max: parseInt(process.env.UPLOAD_RATE_LIMIT_MAX) || 200, // Increased from 10 to 200
   message: {
     success: false,
     message: "Too many upload requests, please try again later.",
