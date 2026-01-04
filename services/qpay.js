@@ -165,10 +165,17 @@ class QpayService {
 
       if (response.data && response.data.access_token) {
         // Cache the token
+        let expiresAt;
         const expiresIn = response.data.expires_in || 3600;
-        const expiresAt = new Date(Date.now() + expiresIn * 1000);
 
-        console.log(`✅ New token received (expires in ${expiresIn}s)`);
+        // Determine if expiresIn is a timestamp (large value) or seconds (small value)
+        if (expiresIn > 100000000) {
+          expiresAt = new Date(expiresIn * 1000);
+          console.log(`✅ New token received (timestamp expiry: ${expiresAt.toISOString()})`);
+        } else {
+          expiresAt = new Date(Date.now() + expiresIn * 1000);
+          console.log(`✅ New token received (relative expiry: ${expiresIn}s)`);
+        }
 
         this.tokenCache[subdomain] = {
           token: response.data.access_token,
@@ -256,10 +263,21 @@ class QpayService {
       );
 
       if (response.data && response.data.token) {
+        let expiresAt;
         const expiresIn = response.data.expires_in || 3600;
+
+        // Determine if expiresIn is a timestamp (large value) or seconds (small value)
+        if (expiresIn > 100000000) {
+          expiresAt = new Date(expiresIn * 1000);
+          console.log(`✅ Token refreshed (timestamp expiry: ${expiresAt.toISOString()})`);
+        } else {
+          expiresAt = new Date(Date.now() + expiresIn * 1000);
+          console.log(`✅ Token refreshed (relative expiry: ${expiresIn}s)`);
+        }
+
         this.tokenCache[subdomain] = {
           token: response.data.token,
-          expiry: Date.now() + expiresIn * 1000,
+          expiry: expiresAt.getTime(),
         };
       }
 
