@@ -7,7 +7,6 @@ const compression = require("compression");
 // Import optimization utilities
 const { initRedis, closeRedis } = require("./utils/redis");
 const { metricsMiddleware, getMetrics } = require("./middleware/metrics");
-const { defaultLimiter } = require("./middleware/rateLimiter");
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -371,11 +370,6 @@ const dashboardRoutes = require("./routes/dashboard");
 const achievementsRoutes = require("./routes/achievements");
 const activityTrackingRoutes = require("./routes/activityTracking");
 const { authenticate, authorize } = require("./middleware/auth");
-const {
-  authLimiter,
-  uploadLimiter,
-  publicLimiter,
-} = require("./middleware/rateLimiter");
 
 // Serve uploaded files as static (with subdomain organization)
 app.use(
@@ -405,23 +399,23 @@ app.get("/metrics", async (req, res) => {
   }
 });
 
-// Mount routes with appropriate rate limiting
-app.use("/api2/auth", authLimiter, authRoutes); // Configurable: 50 req/15min (or disabled via DISABLE_AUTH_RATE_LIMIT=true)
-app.use("/api2/webtoon", publicLimiter, webtoonRoutes); // Lenient: 200 req/15min
-app.use("/api2/novel", publicLimiter, novelRoutes); // Lenient: 200 req/15min
-app.use("/api2/search", publicLimiter, searchRoutes); // Unified search: 200 req/15min
-app.use("/api2/ai", uploadLimiter, aiRoutes); // Medium: 10 req/15min (AI image generation)
-app.use("/api2/upload", uploadLimiter, uploadRoutes); // Medium: 10 req/15min
-app.use("/api2/users", defaultLimiter, usersRoutes); // Default: 100 req/15min
-app.use("/api2/comments", publicLimiter, commentsRoutes); // Lenient: 200 req/15min
-app.use("/api2/organizations", publicLimiter, organizationsRoutes); // Lenient: 200 req/15min
-app.use("/api2/notifications", defaultLimiter, notificationsRoutes); // Default: 100 req/15min
-app.use("/api2/qpay", defaultLimiter, qpayRoutes); // Default: 100 req/15min
-app.use("/api2/payment", defaultLimiter, qpayRoutes); // Payment routes (premium activation)
-app.use("/api2/feedback", defaultLimiter, feedbackRoutes); // Default: 100 req/15min
-app.use("/api2/dashboard", defaultLimiter, dashboardRoutes); // Default: 100 req/15min
-app.use("/api2/achievements", publicLimiter, achievementsRoutes); // Lenient: 200 req/15min
-app.use("/api2/activity", publicLimiter, activityTrackingRoutes); // Lenient: 200 req/15min
+// Mount routes
+app.use("/api2/auth", authRoutes);
+app.use("/api2/webtoon", webtoonRoutes);
+app.use("/api2/novel", novelRoutes);
+app.use("/api2/search", searchRoutes);
+app.use("/api2/ai", aiRoutes);
+app.use("/api2/upload", uploadRoutes);
+app.use("/api2/users", usersRoutes);
+app.use("/api2/comments", commentsRoutes);
+app.use("/api2/organizations", organizationsRoutes);
+app.use("/api2/notifications", notificationsRoutes);
+app.use("/api2/qpay", qpayRoutes);
+app.use("/api2/payment", qpayRoutes); // Payment routes (premium activation)
+app.use("/api2/feedback", feedbackRoutes);
+app.use("/api2/dashboard", dashboardRoutes);
+app.use("/api2/achievements", achievementsRoutes);
+app.use("/api2/activity", activityTrackingRoutes);
 
 // Welcome route - shows subdomain and database separation
 app.get("/", (req, res) => {

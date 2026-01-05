@@ -53,3 +53,4 @@ favoriteSchema.index({ user: 1, subdomain: 1, createdAt: -1 });
 
 module.exports = mongoose.model("Favorite", favoriteSchema);
 
+

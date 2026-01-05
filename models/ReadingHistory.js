@@ -69,3 +69,4 @@ readingHistorySchema.index({ novelId: 1, subdomain: 1 });
 
 module.exports = mongoose.model("ReadingHistory", readingHistorySchema);
 
+
